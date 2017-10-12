@@ -4,7 +4,7 @@
 
 //read block copies the logical block ldisk[i] into main memory starting at the location
 //specified by the pointer
-void read_block(int logical_index,char* dest)
+static void read_block(int logical_index,char* dest)
 {
 	printf("read_block at logical_index: %d\n",logical_index);
 	assert(logical_index >=  0 && logical_index < pdisk.logical_block_size);
@@ -16,7 +16,7 @@ void read_block(int logical_index,char* dest)
 
 //write block copies the number of character corresponding to the block length, B, from main memory
 //starting at the location specified by the pointer p, into the logical block ldisk[i].
-int  write_block(int logical_index,char* src)
+static int write_block(int logical_index,char* src)
 {
 	printf("write_block to ldisk at logical_index: %d\n",logical_index);
 	assert(logical_index >= 0 && logical_index < pdisk.logical_block_size);	
@@ -31,13 +31,20 @@ int  write_block(int logical_index,char* src)
 }
 
 //restores ldisk from file.txt or create a new one if no file exists
-int init(char* filename)
+static int init(char* filename)
 {
 	return -1;
 }
 //save ldisk to file.txt
-int save(char* filename)
+static int save(char* filename)
 {
 	return -1;
 }
 
+iospace_struct const io_system = 
+{
+	read_block,
+	write_block,
+	init,
+	save
+};
