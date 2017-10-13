@@ -4,6 +4,11 @@
 #define L 64 // logical block size
 #define B 64 //block length in bytes
 
+
+//each block is 16 ints since each block size = 64 bytes
+//use this to increment through a block by the size of integer value in bytes
+#define I sizeof(int)
+
 /*
 	The following class simulates a physical disk where it can be read from and written to
 	one sector at a time
@@ -32,6 +37,9 @@ typedef struct
 	int (* const init)(char* filename);
 	//save ldisk to file.txt
 	int (* const save)(char* filename);
+	
+	//returns 0 if block is free, otherwise it returns 1 if block is taken
+	int (* const isBitEnabled)(int logical_index);
 } iospace_struct;
 extern iospace_struct const io_system;
 
