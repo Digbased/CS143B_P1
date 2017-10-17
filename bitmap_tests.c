@@ -14,16 +14,13 @@ void setup()
 {
 	bitmap = (char*)malloc(sizeof(char) * BITMAP_SIZE);	
 	memset(bitmap,0,BITMAP_SIZE);
-
-	pdisk.logical_block_size = L;
-	pdisk.block_length = B;
-		
-
+	io_system.init(NULL);
 }
 
 void teardown()
 {
 	free(bitmap);
+	io_system.free_disk();
 }
 
 Test(bitmaps,first_test)
@@ -69,4 +66,29 @@ Test(bitmaps, fifth_test, .init = setup, .fini = teardown)
 	int isBitEnabled = (bitmap[0] >> i) & 1;
 	cr_assert_eq(isBitEnabled,0,"Error fifth_test.. Actual: %d, Expected: %d\n",isBitEnabled,0);
 
+}
+
+//Test(init, init_no_file, .init = setup, .fini = teardown)
+//{
+//	int status = io_system.init(NULL);
+//	cr_assert_eq(status,0,"Error init_no_file... Actual: %d, Expected: %d\n",status,0);
+//}
+//
+//Test(init, init_file_not_exist, .init = setup, .fini = teardown)
+//{
+//	int status = io_system.init("saves/non_existent_file.txt");
+//	cr_assert_eq(status, 1,"Error in init_file_not_exist... Actual: %d, Expected: %d\n",status,1);
+//}
+//
+//Test(init, init_file_exist, .init = setup, .fini = teardown)
+//{
+//	int status = io_system.init("saves/existing_file.txt");
+//	cr_assert_eq(status,2,"Error in init_file_exist... Actual: %d, Expected: %d\n",status, 2);
+//}
+
+Test(bitmaps, sixth_test, .init = setup, .fini = teardown)
+{
+	int bitEnabled = io_system.isBitEnabled(0);
+	//this should be true since the first block of ldisk is reserved for the bitmap
+	cr_assert_eq(bitEnabled,1, "Error sixth_test... Actual: %d, Expected: %d\n",bitEnabled,1);
 }
