@@ -6,9 +6,67 @@
 #include "io_system.h"
 
 #define BITS 8
-#define INT_SIZE sizeof(int) * BITS
 
 extern ldisk pdisk;
+
+//used to enable / disable bits in bitmap
+static int MASK[BITS];
+static int MASK2[BITS];
+
+
+//initialize 8 bit masks diagonally
+void init_mask()
+{
+	MASK[0] = 0x80;
+	MASK2[0] = ~MASK[0];
+	for(int i = 1;i < BITS;++i)
+	{
+		MASK[i] = MASK[i - 1] >> 1;
+		MASK2[i] = ~MASK[i];
+	}
+}
+
+//used to print out bit mask values for debugging purposes
+void printMaskValues()
+{
+	for(int i = 0;i < BITS;++i)
+		printf("%d | %04x\n",MASK[i], MASK[i]);
+}
+
+//used to print out values in binary form used for debugging
+void printBinaryValue()
+{
+	//print out binary representation of cstring
+	char* bitmap = pdisk.buf[0];
+	for(int i = 8 - 1;i >= 0;--i)
+	{
+		for(int t = 8 - 1;t >= 0;--t)
+	      	{
+	      
+	        	int bit = (bitmap[i] >> t) & 0x01;
+			printf("%d",bit);
+	      	}
+	}
+	
+	printf("\n");
+}
+
+void printBinaryMaskValue(int index)
+{
+	puts("MASK");
+	for(int i = 31;i >= 0;--i)
+	{
+		printf("%d",(MASK[index] >> i) & 0x01);
+	}
+	printf("\n");
+	printf("hi: %d\n",MASK[index]);
+	puts("~MASK");
+	for(int i = 31;i >= 0;--i)
+	{
+		printf("%d", (MASK2[index] >> i) & 0x01);
+	}
+	printf("\n");
+}
 
 //read block copies the logical block ldisk[i] into main memory starting at the location
 //specified by the pointer
@@ -52,6 +110,8 @@ static int write_block(int logical_index,char* src)
 static int init(char* filename)
 {
 
+	init_mask();
+
 	pdisk.logical_block_size = L;
 	pdisk.block_length = B;
 
@@ -63,8 +123,9 @@ static int init(char* filename)
 		memset(pdisk.buf[i],0,pdisk.block_length);
 	}
 
-	//block 0 is reserved for the bitmap
-	pdisk.buf[0][0] = 1;
+	//block 0 is reserved for the bitmap ~ assumption: first 2 integers of block 0 are used for bitmap
+	//since bits are read from right to left block 0 resides in the second half of the bitmap
+	pdisk.buf[0][0] = 1; // this is a char array not an integer array
 	
 	int return_status = -1;
 	if(filename == NULL)
@@ -122,20 +183,59 @@ static int isBitEnabled(int logical_index)
 	assert(pdisk.block_length > 0);
 	assert(logical_index >= 0 && logical_index < pdisk.logical_block_size);
 
-	char* bm = pdisk.buf[0];
+	char* bitmap = pdisk.buf[0];
 
-	int bitEnabled = (*bm >> logical_index) & 1;
+	//since each byte is 8 bits and ldisk is a 2d array of characters... the first 8 character bytes in block 0 of the array refer to the disk's bitmap
+	//we have take the modulus here to ensure it grabs the correct bit of the correct index
+	
+	int bucket_index = logical_index / BITS; // describes which byte in the bitmap array we are referencing	
+	int bit_index = logical_index % BITS; // describes which bit in the bitmap array indexed by bucket_index  we are referencing
+	int bitEnabled = (bitmap[bucket_index] >> bit_index) & 1;
 	//printf("is block [%d] taken ? %d\n",logical_index,bitEnabled);	
 
 	return bitEnabled;
 }
 
-iospace_struct const io_system = 
+static void enableBit(int logical_index)
 {
-	read_block,
-	write_block,
-	init,
-	free_disk,
-	save,
-	isBitEnabled
+	assert(logical_index >= 0 && logical_index < pdisk.logical_block_size);	
+	
+	char* bitmap = pdisk.buf[0];
+
+	//int bucket_length = pdisk.logical_block_size / BITS;
+	int bucket_index = logical_index / BITS;
+	int bit_index = logical_index % BITS;
+
+	bitmap[bucket_index] = bitmap[bucket_index] | MASK[BITS - 1 - bit_index];
+		
+}
+
+static void disableBit(int logical_index)
+{
+	assert(logical_index >= 0 && logical_index < pdisk.logical_block_size);
+	
+	char* bitmap = pdisk.buf[0];
+	int bucket_index = logical_index / BITS;
+	int bit_index = logical_index % BITS;
+	bitmap[bucket_index] = bitmap[bucket_index] & (MASK2[BITS - 1 - bit_index]);
+
+	//printf("MASK[%d] = %04x\n",bit_index,MASK[bit_index]);
+	//printf("MASK2[%d] = %04x\n",bit_index,MASK2[bit_index]);
+
+	//printBinaryValue();
+	//printBinaryMaskValue(bit_index);
+
+	//printMaskValues();
+}                        
+
+iospace_struct const io_system = 
+{                        
+	read_block,        
+	write_block,       
+	init,              
+	free_disk,         
+	save,              
+	isBitEnabled,      
+	enableBit,
+	disableBit
 };

@@ -44,6 +44,10 @@ typedef struct
 	
 	//returns 0 if block is free, otherwise it returns 1 if block is taken
 	int (* const isBitEnabled)(int logical_index);
+
+	void (* const enableBit)(int logical_index);
+	void (* const disableBit)(int logical_index);
+
 } iospace_struct;
 extern iospace_struct const io_system;
 
