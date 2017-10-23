@@ -115,7 +115,7 @@ Test(io_interface, read_block_integer, .init = setup, .fini = teardown)
 	int number;
 	int logical_index = 0;
 	io_system.read_block(logical_index,(char*)&number,sizeof(number));
-	cr_assert_eq(number,1,"read_block_integer~ actual: %d; expected: %d\n",number,1);
+	cr_assert_eq(number,127,"read_block_integer~ actual: %d; expected: %d\n",number,127);
 	
 	logical_index = 1;
 	for(int i = 0;i < BLOCK_LEN;++i)

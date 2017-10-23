@@ -119,9 +119,7 @@ static int write_block(int logical_index,char* src,int size)
 //returns 2 if file does exist and file contents is loaded into disk
 static int init(char* filename)
 {
-
 	init_mask();
-
 	pdisk.logical_block_size = L;
 	pdisk.block_length = B;
 
@@ -133,10 +131,12 @@ static int init(char* filename)
 		memset(pdisk.buf[i],0,pdisk.block_length);
 	}
 
-	//block 0 is reserved for the bitmap ~ assumption: first 2 integers of block 0 are used for bitmap
-	//since bits are read from right to left block 0 resides in the second half of the bitmap
-	pdisk.buf[0][0] = 1; // this is a char array not an integer array
-	
+	//first 7 bits of the bitmap are set to 1 since each bit represents a block
+	//0th bit represents bitmap
+	//1th to 6th bits represents file descriptors
+	for(int i = 0;i < BITS - 1;++i)
+		pdisk.buf[0][0] = pdisk.buf[0][0] | (0x01 << i);
+
 	int return_status = -1;
 	if(filename == NULL)
 	{	

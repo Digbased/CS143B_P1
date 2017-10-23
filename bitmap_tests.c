@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <criterion/criterion.h>
 
+#include "code/ldisk.h"
 #include "code/io_system.h"
 
 #define INT_LENGTH 2
@@ -90,7 +91,7 @@ Test(bitmaps, enableBit_thorough, .init = setup, .fini = teardown)
 	io_system.enableBit(56);
 	int isEnabled = io_system.isBitEnabled(56);
 	cr_assert_eq(isEnabled,1, "Error enableBit_thorough at pdisk.buf bit at %d... Actual: %d, Expected: %d\n",56,isEnabled, 1);
-	for(int i = 1;i < 64;++i)
+	for(int i = 8;i < 64;++i)
 	{
 		if(i == 56) continue;
 		int bitEnabled = io_system.isBitEnabled(i);
@@ -100,16 +101,16 @@ Test(bitmaps, enableBit_thorough, .init = setup, .fini = teardown)
 
 Test(bitmaps, enableBit_evens, .init = setup, .fini = teardown)
 {
-	for(int i = 0;i < 64;i += 2)
+	for(int i = 8;i < 64;i += 2)
 		io_system.enableBit(i);
 
-	for(int i = 0;i < 64;i += 2)
+	for(int i = 8;i < 64;i += 2)
 	{
 		int bitEnabled = io_system.isBitEnabled(i);
 		cr_assert_eq(bitEnabled,1,"Error enableBit_evens at pdisk.buf bit %d... Actual: %d, Expected: %d\n",i,bitEnabled,1);
 	}
 
-	for(int i = 1;i < 64;i += 2)
+	for(int i = 9;i < 64;i += 2)
 	{
 		int bitEnabled = io_system.isBitEnabled(i);
 		cr_assert_eq(bitEnabled,0,"Error enableBit_evens at pdisk.buf bit %d... Actual: %d, Expected: %d\n",i,bitEnabled,0);
@@ -134,7 +135,7 @@ Test(bitmaps, disableBit_thorough, .init = setup, .fini = teardown)
 	io_system.disableBit(56);
 	int isEnabled = io_system.isBitEnabled(56);
 	cr_assert_eq(isEnabled,0, "Error disableBit_thorough at pdisk.buf bit at %d... Actual: %d, Expected: %d\n",56,isEnabled, 0);
-	for(int i = 1;i < 64;++i)
+	for(int i = 7;i < 64;++i)
 	{
 		if(i == 56) continue;
 		int bitEnabled = io_system.isBitEnabled(i);
@@ -158,7 +159,3 @@ Test(bitmaps, disableBit_evens, .init = setup, .fini = teardown)
 
 }
 
-TEST(io_read_write, io_read_ints, .init = setup, .fini = teardown)
-{
-	
-}
