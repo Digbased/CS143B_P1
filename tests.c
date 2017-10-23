@@ -15,40 +15,18 @@ static char* buffer;
 void setup()
 {
 	//puts("Runs before the test");
-	
-	pdisk.logical_block_size = LOGICAL_LEN;
-	pdisk.block_length = BLOCK_LEN;
-	
 	//allocate main memory	
 	buffer = (char*)malloc(sizeof(char) * BLOCK_LEN);
-//	int size = sizeof(buffer);
-//	printf("Size: %d\n",size);
 
-	//allocate ldisk
-	pdisk.buf = (char**)malloc(sizeof(char*) * LOGICAL_LEN);
-	for(int i = 0;i < LOGICAL_LEN;++i)
-		pdisk.buf[i] = (char*)malloc(sizeof(char) * BLOCK_LEN);
-	
-	//initialize pdisk with fake data
-	for(int i = 0;i < LOGICAL_LEN;++i)
-	{
-		for(int t = 0;t < BLOCK_LEN;++t)
-		{
-			pdisk.buf[i][t] = 'F';
-		}
-	}
-
-
+	//allocate ldisk from main memory (ram)
+	io_system.init(NULL);	
 }
 
 void teardown()
 {
 	//puts("Runs after the test");
-	for(int i = 0;i < LOGICAL_LEN;++i)
-		free(pdisk.buf[i]);
-	free(pdisk.buf);
-
 	free(buffer);
+	io_system.free_disk();
 }
 
 Test(simple, the_test, .init = setup, .fini = teardown)
@@ -63,95 +41,108 @@ Test(io_interface,read_block_simple, .init = setup, .fini = teardown)
 	//specified by the pointer
 	
 	int testIndex = 1;
-	io_system.read_block(testIndex,buffer);
+	io_system.read_block(testIndex,buffer,sizeof(buffer));
 
-	printf("pdisk block length: %d\n",pdisk.block_length);
+//	printf("pdisk block length: %d\n",pdisk.block_length);
 
-	for(int i = 0;i < BLOCK_LEN;++i)
+	for(int i = 0;i < sizeof(buffer);++i)
 		cr_assert(pdisk.buf[testIndex][i] == buffer[i],"test failed in read_block_simple at index[%d], actual: %c, expected: %c",i, buffer[i],pdisk.buf[testIndex][i]);
 
-	int buf_size = strlen(buffer);
-	int pdisk_buf_size = strlen(pdisk.buf[testIndex]);
-	printf("strlen(buffer): %d\n",buf_size);
-	printf("buffer: %s\n",buffer);
-	printf("strlen(pdisk.buf[%d]): %d\n",testIndex,pdisk_buf_size);
-	printf("pdisk.buf[%d]: %s\n",testIndex,pdisk.buf[testIndex]);
 }
 
 Test(io_interface,write_block_simple, .init = setup, .fini = teardown)
 {
 	//write block copies the number of character corresponding to the block length, B, from main memory
 	//starting at the location specified by the pointer p, into the logical block ldisk[i].
-	puts("write_block_simple");
+//	puts("write_block_simple");
 
 	for(int i = 0;i < BLOCK_LEN; ++i)
 		buffer[i] = 'a';
 
 
 	int testIndex = 1;	
-	int status = io_system.write_block(testIndex,buffer);
+	int status = io_system.write_block(testIndex,buffer,sizeof(buffer));
 	cr_assert_eq(status,1,"test failed in write_block_simple. actual: %d, expected: %d",status,1);
 	
-	for(int i = 0;i < BLOCK_LEN; ++i)
+	for(int i = 0;i < sizeof(buffer); ++i)
 		cr_assert_eq(pdisk.buf[testIndex][i],buffer[i],"test failed in write_block_simple at index[%d], actual: %c, expected: %c\n",i ,pdisk.buf[testIndex][i], buffer[i]);
 }
 
-Test(file_interface,simple_create, .init = setup, .fini = teardown)
-{
-	file_system.create("Testfile.txt");
-}
+//Test(file_interface,simple_create, .init = setup, .fini = teardown)
+//{
+//	file_system.create("Testfile.txt");
+//}
+//
+//Test(file_interface, simple_destroy, .init = setup, .fini = teardown)
+//{
+//	file_system.destroy("Testfile.txt");
+//}
+//
+//Test(file_interface, simple_open)
+//{
+//	file_system.open("Testfile.txt");
+//}
+//
+//Test(file_interface, simple_close)
+//{
+//	file_system.close(1);
+//}
+//
+//Test(file_interface, simple_read)
+//{
+//	file_system.read(1,NULL,5);
+//}
+//
+//Test(file_interface, simple_write)
+//{
+//	file_system.write(1,NULL,5);
+//}
+//
+//Test(file_interface, simple_lseek)
+//{
+//	file_system.lseek(1,5);
+//}
+//
+//Test(file_interface, simple_directory)
+//{
+//	file_system.directory();
+//}
 
-Test(file_interface, simple_destroy, .init = setup, .fini = teardown)
-{
-	file_system.destroy("Testfile.txt");
-}
 
-Test(file_interface, simple_open)
+Test(io_interface, read_block_integer, .init = setup, .fini = teardown)
 {
-	file_system.open("Testfile.txt");
-}
-
-Test(file_interface, simple_close)
-{
-	file_system.close(1);
-}
-
-Test(file_interface, simple_read)
-{
-	file_system.read(1,NULL,5);
-}
-
-Test(file_interface, simple_write)
-{
-	file_system.write(1,NULL,5);
-}
-
-Test(file_interface, simple_lseek)
-{
-	file_system.lseek(1,5);
-}
-
-Test(file_interface, simple_directory)
-{
-	file_system.directory();
-}
-
-Test(io_interface, simple_init)
-{
-	int status = io_system.init("testdisk.txt");
-	for(int i = 0;i < BLOCK_LEN; ++i)
-		printf("%c",pdisk.buf[0][i]);
-	printf("\n");
-
-//	io_system.read_block(1,buffer);
-	//for(int i = 0;i < BLOCK_LEN; ++i)
-	//	printf("%d",(int)buffer[i]);
-	//printf("\n");
+	int number;
+	int logical_index = 0;
+	io_system.read_block(logical_index,(char*)&number,sizeof(number));
+	cr_assert_eq(number,1,"read_block_integer~ actual: %d; expected: %d\n",number,1);
 	
-	cr_assert_eq(status,0,"Error, simple_init failed");
+	logical_index = 1;
+	for(int i = 0;i < BLOCK_LEN;++i)
+	{
+		pdisk.buf[logical_index][i] = 'a';
+	}
+	
+	io_system.read_block(logical_index,(char*)&number,sizeof(number));
+	// "aaaa" as an integer value = 1633771873
+	int eValue = *(int*)pdisk.buf[logical_index];
+	cr_assert_eq(number,eValue,"read_block_integer actual: %d, expected: %d\n",number, eValue);
+
+
 }
 
-Test(io_interface, simple_bitEnabled)
+Test(io_interface, write_block_integer, .init = setup, .fini = teardown)
 {
+	int number = 25;
+	int logical_index = 5;
+	io_system.write_block(logical_index,(char*)&number,sizeof(number));
 	
+	int eValue = *(int*)pdisk.buf[logical_index];
+	cr_assert_eq(number, eValue, "write_block_integer actual: %d, expected: %d\n",number,eValue);
+
+	char* cNumber = (char*)&number;
+	for(int i = 0;i < sizeof(number);++i)
+	{
+		cr_assert(pdisk.buf[logical_index][i] == cNumber[i],"write_block_integer actual: %c, expected: %c\n",pdisk.buf[logical_index][i],cNumber[i]);
+	}
 }
+

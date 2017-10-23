@@ -27,11 +27,13 @@ ldisk pdisk;
 
 typedef struct
 {
-	//reads B bytes into dest array
-	void (* const read_block)(int logical_index,char* dest);
+	//reads B  bytes into dest array
+	//if dest array is smaller than B bytes, then it will read the 
+	//first 'size' bytes from ldisk to dest
+	void (* const read_block)(int logical_index,char* dest,int size);
 	//writes a block of memory (src)  into ldisk at logical_index location specified
 	//returns 1 on success, 0 on failure
-	int (* const write_block)(int logical_index,char* src);
+	int (* const write_block)(int logical_index,char* src,int size);
 	
 	//restores ldisk from file.txt or create a new one if no file exists
 	int (* const init)(char* filename);

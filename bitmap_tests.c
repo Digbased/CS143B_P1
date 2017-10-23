@@ -158,3 +158,7 @@ Test(bitmaps, disableBit_evens, .init = setup, .fini = teardown)
 
 }
 
+TEST(io_read_write, io_read_ints, .init = setup, .fini = teardown)
+{
+	
+}
