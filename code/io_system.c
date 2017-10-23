@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include "io_system.h"
+#include "ldisk.h"
 
 #define BITS 8
 

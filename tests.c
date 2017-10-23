@@ -2,6 +2,7 @@
 #include <string.h>
 #include <criterion/criterion.h>
 
+#include "code/ldisk.h"
 #include "code/io_system.h"
 #include "code/file_system.h"
 

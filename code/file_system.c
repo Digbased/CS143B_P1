@@ -2,6 +2,9 @@
 #include <assert.h>
 
 #include "file_system.h"
+#include "ldisk.h"
+
+extern ldisk pdisk;
 
 //create a new file with the specified name sym_name
 static void create(char* filename)
