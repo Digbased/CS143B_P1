@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <criterion/criterion.h>
 
-#include "code/ldisk.h"
+//#include "code/ldisk.h"
 #include "code/file_system.h"
 #include "code/io_system.h"
 
@@ -10,7 +10,8 @@
 #define BITMAP_SIZE sizeof(int) * (INT_LENGTH)
 
 static char* bitmap;
-extern ldisk pdisk;
+//extern ldisk pdisk;
+//extern char ldisk[L][B];
 
 void setup()
 {
@@ -22,7 +23,7 @@ void setup()
 void teardown()
 {
 	free(bitmap);
-	file_system.free_disk();
+	//file_system.free_disk();
 }
 
 Test(bitmaps,first_test)

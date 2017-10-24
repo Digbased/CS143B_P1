@@ -4,10 +4,11 @@
 #define L 64 // logical block size
 #define B 64 //block length in bytes
 
-
 //each block is 16 ints since each block size = 64 bytes
 //use this to increment through a block by the size of integer value in bytes
 #define I sizeof(int)
+
+char ldisk[L][B];
 
 typedef struct
 {

@@ -43,9 +43,6 @@ typedef struct
 	//restores ldisk from file.txt or create a new one if no file exists
 	int (* const init)(char* filename);
 	
-	//frees ldisk dynamic allocations to prevent memory leak
-	void (* const free_disk)();	
-
 	//save ldisk to file.txt
 	int (* const save)(char* filename);
 		
