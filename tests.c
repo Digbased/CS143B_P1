@@ -29,6 +29,7 @@ void teardown()
 	//puts("Runs after the test");
 	free(buffer);
 	//file_system.free_disk();
+	file_system.save("talking.txt");
 }
 
 Test(simple, the_test, .init = setup, .fini = teardown)
@@ -154,3 +155,6 @@ Test(io_interface, write_block_integer, .init = setup, .fini = teardown)
 	}
 }
 
+Test(file_interface, simple_save, .init = setup, .fini = teardown)
+{
+}

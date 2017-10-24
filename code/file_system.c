@@ -8,6 +8,7 @@
 
 #define BITS 8
 #define FILES_COUNT 3
+#define FREE -1
 
 extern char ldisk[L][B];
 
@@ -35,8 +36,8 @@ void init_mask()
 void init_file_pointers()
 {
 	directory_file = NULL;
-	for(int i = 0;i < FILES_COUNT;++i)
-		files[i] = NULL;
+//	for(int i = 0;i < FILES_COUNT;++i)
+//		files[i] = NULL;
 }
 
 
@@ -112,7 +113,6 @@ static int init(char* filename)
 	init_mask();
 	init_file_pointers();
 
-
 	//first 7 bits of the bitmap are set to 1 since each bit represents a block
 	//0th bit represents bitmap
 	char bitmap[B] = {0};
@@ -122,7 +122,49 @@ static int init(char* filename)
 	io_system.write_block(0,bitmap,64);
 
 	//open a file named directory.txt and have it initialized in fd0
-	directory_file = fopen("directory.txt","r+");
+	directory_file = fopen("directory.txt","w+");
+
+	char directorymap[B] = {0};
+	//directory file descriptor
+	int dir_desc[4] = {0, -1, -1, -1};
+	for(int i = 0;i < 4;++i)
+	{
+		//copy 4 bytes from char array  since this is treated as an int
+		char* directoryAddress = directorymap + 4 * i;
+		int* directoryValueLocation = &(dir_desc[i]);
+		memcpy(directoryAddress,directoryValueLocation,sizeof(int));
+	}
+
+	//for all other file descriptors in block 1, set them as free fds
+	int free_fd = -1;
+	for(int offset = 16;offset < B;offset += 4)
+	{
+		char* directoryAddress = directorymap + offset;
+		int* directoryValueLocation = &free_fd;
+		memcpy(directoryAddress,directoryValueLocation,sizeof(int));	
+	}
+
+	//write back to block1
+	io_system.write_block(1,directorymap,64);
+
+	//for blocks 2 - 6, init all of them to be free file descriptors
+#define FD_BLOCK_COUNT  5
+	char fd_blocks[FD_BLOCK_COUNT][B];
+
+	for(int i = 0;i < FD_BLOCK_COUNT; ++i)
+	{
+		for(int offset = 0;offset < B;offset += sizeof(int))
+		{
+			char* directoryAddress = fd_blocks[i] + offset;
+			int* directoryValueLocation = &free_fd;
+			memcpy(directoryAddress, directoryValueLocation,sizeof(int));
+		}
+	}
+
+	//write back to blocks 2 - 6
+	for(int i = 2;i < 7;++i)
+		io_system.write_block(i,fd_blocks[i - 2],B);
+	
 
 	int status = -1;
 	if(filename == NULL)
@@ -142,12 +184,13 @@ static int init(char* filename)
 //closes ldisk and saves all files opened (including directory file) to some file.txt 
 static int save(char* filename)
 {
-	fclose(directory_file);
-	for(int i = 0;i < FILES_COUNT; ++i)
-	{
-		if(files[i] != NULL)
-			fclose(files[i]);
-	}
+	if(directory_file != NULL)
+		fclose(directory_file);
+	//for(int i = 0;i < FILES_COUNT; ++i)
+	//{
+	//	if(files[i] != NULL)
+	//		fclose(files[i]);
+	//}
 	return -1;
 }
 
