@@ -20,14 +20,14 @@ void setup()
 	buffer = (char*)malloc(sizeof(char) * BLOCK_LEN);
 
 	//allocate ldisk from main memory (ram)
-	io_system.init(NULL);	
+	file_system.init(NULL);	
 }
 
 void teardown()
 {
 	//puts("Runs after the test");
 	free(buffer);
-	io_system.free_disk();
+	file_system.free_disk();
 }
 
 Test(simple, the_test, .init = setup, .fini = teardown)

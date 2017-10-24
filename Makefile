@@ -15,7 +15,7 @@ io_tests:
 	$(CC) -o tests unit_tests/tests.c $(FLAGS)
 
 bitmap_tests:
-	$(CC) -o bitmaptests bitmap_tests.c code/io_system.c $(FLAGS)
+	$(CC) -o bitmaptests bitmap_tests.c code/io_system.c code/file_system.c $(FLAGS)
 bitmap_tests_windows:
 	$(CC) -o bitmaptests_windows bitmap_tests.c code/io_system.c $(WINDOWS_FLAGS)
 main_test:

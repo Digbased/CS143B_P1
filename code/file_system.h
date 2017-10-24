@@ -39,6 +39,23 @@ typedef struct
 	
 	//displays list of files and their lengths
 	void (* const directory)();
+
+	//restores ldisk from file.txt or create a new one if no file exists
+	int (* const init)(char* filename);
+	
+	//frees ldisk dynamic allocations to prevent memory leak
+	void (* const free_disk)();	
+
+	//save ldisk to file.txt
+	int (* const save)(char* filename);
+		
+	//returns 0 if block is free, otherwise it returns 1 if block is taken
+	int (* const isBitEnabled)(int logical_index);
+
+	void (* const enableBit)(int logical_index);
+	void (* const disableBit)(int logical_index);
+
+
 } filespace_struct;
 extern filespace_struct const file_system;
 
