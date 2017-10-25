@@ -9,6 +9,7 @@
 #define BITS 8
 #define FILES_COUNT 3
 #define FREE -1
+#define FD_SIZE 4 //integers
 
 extern char ldisk[L][B];
 
@@ -36,15 +37,65 @@ void init_mask()
 void init_file_pointers()
 {
 	directory_file = NULL;
-//	for(int i = 0;i < FILES_COUNT;++i)
-//		files[i] = NULL;
+	for(int i = 0;i < FILES_COUNT;++i)
+		files[i] = NULL;
 }
 
 
 //create a new file with the specified name sym_name
 static void create(char* filename)
 {
+	printf("sizeof(filename): %lu\n",sizeof(*filename));
+	//assert(sizeof(filename) <= 4);
+
 	printf("create file: %s\n",filename);
+
+	int fd_index = -1;	
+	for(int logical_index = 1;logical_index < 7; ++logical_index)
+	{
+	//find a free file descriptor in ldisk
+		char block[B];
+		io_system.read_block(logical_index,block,B);
+		int numInts = B / sizeof(int);//16
+		int numFDsPerBlock = numInts / FD_SIZE;//4
+
+		for(int k = 0;k < B; k += numFDsPerBlock)
+		{
+			int fdValue = *(int*)(block + sizeof(int) * k);
+			if(fdValue == FREE)
+			{
+				//mark as taken
+				int taken = 0;
+				memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
+				fd_index = (sizeof(int) * k) + (numFDsPerBlock * (logical_index - 1));
+				break;
+			}
+		}
+		
+		if(fd_index != -1)
+			break;		
+	}
+
+	//find a free directory entry in the directory file and on disk
+	char directorymap[B];
+	io_system.read_block(1,directorymap,B);
+	int dir_datablock_index = *(int*)(&directorymap[4]);
+
+	char directoryData[B];
+	io_system.read_block(dir_datablock_index,directoryData,B);
+	//hard code directory filename and its descriptor index for now!
+	//directory entry on disk can hold 2 integers
+	//1st entry is filename
+	//2nd entry is file descriptor index
+	memcpy(&(directoryData[0]),filename,sizeof(char) * 4);
+	memcpy(&(directoryData[4]),&fd_index,sizeof(fd_index));	
+
+	//write free directory entry to directory file ~ I don't understand what rewinding means in his instructions
+	fprintf(directory_file,"%s %d\n",filename,fd_index);
+
+	//fill both entries ~ write directory data back to ldisk
+	io_system.write_block(dir_datablock_index,directoryData, B);
+	
 }
 
 //destroy the named file
@@ -125,8 +176,9 @@ static int init(char* filename)
 	directory_file = fopen("directory.txt","w+");
 
 	char directorymap[B] = {0};
-	//directory file descriptor
-	int dir_desc[4] = {0, -1, -1, -1};
+	//directory file descriptor, allocate the next free data block to hold the directory data contents
+	//the number of data blocks directory fd can allocate up to range between 1 to 3.
+	int dir_desc[4] = {0, 8, -1, -1};
 	for(int i = 0;i < 4;++i)
 	{
 		//copy 4 bytes from char array  since this is treated as an int

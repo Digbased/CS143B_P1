@@ -155,6 +155,17 @@ Test(io_interface, write_block_integer, .init = setup, .fini = teardown)
 	}
 }
 
-Test(file_interface, simple_save, .init = setup, .fini = teardown)
+Test(file_interface, simple_create, .init = setup, .fini = teardown)
 {
+	char filename[4] = "abc";
+	file_system.create(filename);
+	
+	char directoryData[B];
+	io_system.read_block(8,directoryData,B);
+	
+	char* sym_name = (char*)(&directoryData[0]);
+	int* fd_index = (int*)(&directoryData[4]);
+	printf("sym_name: %s\n",sym_name);	
+	printf("fd_index: %d\n",*fd_index);
 }
+
