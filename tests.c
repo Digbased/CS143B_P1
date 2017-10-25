@@ -158,6 +158,7 @@ Test(io_interface, write_block_integer, .init = setup, .fini = teardown)
 Test(file_interface, simple_create, .init = setup, .fini = teardown)
 {
 	char filename[4] = "abc";
+	//fails since the first block_number in the directory fd hasn't been assigned to a data block
 	file_system.create(filename);
 	
 	char directoryData[B];

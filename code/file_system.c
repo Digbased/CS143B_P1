@@ -9,7 +9,8 @@
 #define BITS 8
 #define FILES_COUNT 3
 #define FREE -1
-#define FD_SIZE 4 //integers
+#define NUM_INTS_PER_BLOCK (L) / 4 //should be 16 integers
+#define FD_SIZE 4 //4 integers
 
 extern char ldisk[L][B];
 
@@ -41,11 +42,44 @@ void init_file_pointers()
 		files[i] = NULL;
 }
 
+void print_bitmap()
+{
+	char bitmap[B];
+	io_system.read_block(0,bitmap,B);
+	
+	int n = B / BITS;//is the number of bytes required to store the bitmap in block 0
+	for(int k = n;k >= 0;--k)
+	{
+		for(int i = BITS - 1;i >= 0; --i)
+		{
+			int isEnabled = (bitmap[k] >> i) & (0x01);
+			printf("%d",isEnabled);	
+		}
+	}
+	printf("\n");
+}
+
+void print_blocks()
+{
+	for(int k = 0;k < B;++k)
+	{
+		char block[B];
+		io_system.read_block(k,block,B);
+
+		printf("logical_index: %d\n", k);
+		for(int i = 0;i < B; i += sizeof(int))
+		{
+			printf("%d ",*(int*)(&block[i]) );
+		}
+		printf("\n");
+	}
+
+}
 
 //create a new file with the specified name sym_name
 static void create(char* filename)
 {
-	printf("sizeof(filename): %lu\n",sizeof(*filename));
+	//printf("sizeof(filename): %lu\n",sizeof(*filename));
 	//assert(sizeof(filename) <= 4);
 
 	printf("create file: %s\n",filename);
@@ -76,13 +110,19 @@ static void create(char* filename)
 			break;		
 	}
 
+	//THIS IS ALL HARDCODED RIGHT NOW SINCE I DON'T HAVE CODE THE INITIALIZES THE DIRECTORY
 	//find a free directory entry in the directory file and on disk
 	char directorymap[B];
 	io_system.read_block(1,directorymap,B);
+	//first block number as to where to find the data to locate the free directory entry in the file
 	int dir_datablock_index = *(int*)(&directorymap[4]);
 
 	char directoryData[B];
 	io_system.read_block(dir_datablock_index,directoryData,B);
+
+	//TODO: check if directoryData entry already has valid entry in it... and if it does, iterate to another directory entry until a free one has be found
+
+
 	//hard code directory filename and its descriptor index for now!
 	//directory entry on disk can hold 2 integers
 	//1st entry is filename
@@ -90,6 +130,7 @@ static void create(char* filename)
 	memcpy(&(directoryData[0]),filename,sizeof(char) * 4);
 	memcpy(&(directoryData[4]),&fd_index,sizeof(fd_index));	
 
+	//when I open the directory file.. I have to make sure I open it as append mode to ensure I don't override previous directory entries if an existing ldisk file was loaded
 	//write free directory entry to directory file ~ I don't understand what rewinding means in his instructions
 	fprintf(directory_file,"%s %d\n",filename,fd_index);
 
@@ -155,79 +196,79 @@ static void directory()
 	printf("print out the current directory here\n");
 }
 
-//restores ldisk from file.txt or create a new one if no file exists
-//returns 0 if disk is initialized with no filename specified
-//returns 1 if file does not exist and is being created as a new file
-//returns 2 if file does exist and file contents is loaded into disk
-static int init(char* filename)
-{
-	init_mask();
-	init_file_pointers();
 
+void init_bitmap()
+{
 	//first 7 bits of the bitmap are set to 1 since each bit represents a block
 	//0th bit represents bitmap
+	//1th to 6th bits represents data blocks reserved for file descriptors
 	char bitmap[B] = {0};
-	io_system.read_block(0,bitmap,64);
 	for(int i = 0;i < BITS - 1;++i)
 		bitmap[0] = bitmap[0] | (0x01 << i);
-	io_system.write_block(0,bitmap,64);
-
-	//open a file named directory.txt and have it initialized in fd0
-	directory_file = fopen("directory.txt","w+");
-
-	char directorymap[B] = {0};
-	//directory file descriptor, allocate the next free data block to hold the directory data contents
-	//the number of data blocks directory fd can allocate up to range between 1 to 3.
-	int dir_desc[4] = {0, 8, -1, -1};
-	for(int i = 0;i < 4;++i)
-	{
-		//copy 4 bytes from char array  since this is treated as an int
-		char* directoryAddress = directorymap + 4 * i;
-		int* directoryValueLocation = &(dir_desc[i]);
-		memcpy(directoryAddress,directoryValueLocation,sizeof(int));
-	}
-
-	//for all other file descriptors in block 1, set them as free fds
-	int free_fd = -1;
-	for(int offset = 16;offset < B;offset += 4)
-	{
-		char* directoryAddress = directorymap + offset;
-		int* directoryValueLocation = &free_fd;
-		memcpy(directoryAddress,directoryValueLocation,sizeof(int));	
-	}
-
-	//write back to block1
-	io_system.write_block(1,directorymap,64);
-
-	//for blocks 2 - 6, init all of them to be free file descriptors
-#define FD_BLOCK_COUNT  5
-	char fd_blocks[FD_BLOCK_COUNT][B];
-
-	for(int i = 0;i < FD_BLOCK_COUNT; ++i)
-	{
-		for(int offset = 0;offset < B;offset += sizeof(int))
-		{
-			char* directoryAddress = fd_blocks[i] + offset;
-			int* directoryValueLocation = &free_fd;
-			memcpy(directoryAddress, directoryValueLocation,sizeof(int));
-		}
-	}
-
-	//write back to blocks 2 - 6
-	for(int i = 2;i < 7;++i)
-		io_system.write_block(i,fd_blocks[i - 2],B);
+	io_system.write_block(0,bitmap,B);
 	
+}
+
+//helper function to initialize the directory when ldisk first boots up
+void init_dir()
+{
+	directory_file = fopen("dir", "a+");
+	int dirmap[B / sizeof(int)];
+	memset(dirmap,FREE,B);
+	//fd0, block 1 is reserved as directory file descriptor with file len initialized to 0 assuming its a new disk
+	dirmap[0] = 0;
+	io_system.write_block(1,(char*)dirmap,B);
+}
+
+void init_disk()
+{
+	//easiest way to initialize ldisk assuming no filename was specified is to set all blocks in the disk to be free = -1
+	for(int logical_index = 0;logical_index < B; ++logical_index)
+	{
+		int free = -1;
+		int block[B / sizeof(int)];//should be 16
+		for(int i = 0;i < B / sizeof(int); ++i)
+		{
+			memcpy(&block[i],&free,sizeof(int));
+		}
+
+		io_system.write_block(logical_index,(char*)block,B);			
+	}
+
+}
+
+//restores ldisk from file.txt or create a new one if no file exists
+//returns 0 if disk is initialized with no filename specified or file does not exist and will be created..
+//returns 1 if file does exist
+static int init(char* filename)
+{
+	//init_mask();
+	//init_file_pointers();
+	
+	FILE* ldisk_file = fopen(filename,"r");
 
 	int status = -1;
-	if(filename == NULL)
+	//if filename not specified or does not exist
+	if(filename == NULL || ldisk_file == NULL)
 	{
-		//puts("disk initialized");
 		status = 0;
+		puts("disk initialized");
+		init_disk();
+		init_bitmap();
+		init_dir();
+		
 	}
-	else
+	else // if filename exists and successfully loads
 	{
-		//puts("disk restored");
 		status = 1;
+		puts("disk restored");
+		fclose(ldisk_file);
+		//TODO: load contents of file (ldisk.txt) into ldisk
+		// 1. load in bitmap (block 0)
+		// 2. load in fds (blocks 1 to 6)
+		// 3. load in directory data (ranges from 1 to 3 data blocks)
+		// 4. load in data blocks for other files to be loaded on disk
+
 	}
 
 	return status;

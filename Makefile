@@ -19,4 +19,4 @@ bitmap_tests:
 bitmap_tests_windows:
 	$(CC) -o bitmaptests_windows bitmap_tests.c code/io_system.c $(WINDOWS_FLAGS)
 main_test:
-	$(CC) -o main_test main_test.c code/io_system.c $(FLAGS)
+	$(CC) -o main_test main_test.c code/io_system.c code/file_system.c $(FLAGS)
