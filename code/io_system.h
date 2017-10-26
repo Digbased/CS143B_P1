@@ -1,13 +1,12 @@
 #ifndef IO_SYSTEM_H
 #define IO_SYSTEM_H
 
-#define L 64 // logical block size
-#define B 64 //block length in bytes
+#include "test_specs.h"
 
-//each block is 16 ints since each block size = 64 bytes
-//use this to increment through a block by the size of integer value in bytes
-#define I sizeof(int)
+#define L (LOGICAL_BLOCKS) // logical block size 64
+#define B (BYTES_PER_BLOCK) //block length in bytes 64
 
+//the simulated hard drive disk
 char ldisk[L][B];
 
 typedef struct
@@ -15,10 +14,10 @@ typedef struct
 	//reads B  bytes into dest array
 	//if dest array is smaller than B bytes, then it will read the 
 	//first 'size' bytes from ldisk to dest
-	void (* const read_block)(int logical_index,char* dest,int size);
+	void (* const read_block)(int logical_index,char* dest);
 	//writes a block of memory (src)  into ldisk at logical_index location specified
 	//returns 1 on success, 0 on failure
-	int (* const write_block)(int logical_index,char* src,int size);
+	int (* const write_block)(int logical_index,char* src);
 		
 } iospace_struct;
 extern iospace_struct const io_system;

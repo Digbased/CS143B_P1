@@ -7,10 +7,9 @@
 #include "io_system.h"
 
 #define BITS 8
-#define FILES_COUNT 3
+#define FILES_COUNT ((OFT_SIZE) - 1)
+//free refers to a free fd or unassigned block number in a fd
 #define FREE -1
-#define NUM_INTS_PER_BLOCK (L) / 4 //should be 16 integers
-#define FD_SIZE 4 //4 integers
 
 extern char ldisk[L][B];
 
@@ -18,6 +17,7 @@ extern char ldisk[L][B];
 //8 BITS used to set and clear bits in the bitmap of block 0
 static int MASK[BITS]; 
 
+//files available in the OFT ~ might make into static later on
 FILE* directory_file;
 FILE* files[FILES_COUNT];
 
@@ -45,7 +45,7 @@ void init_file_pointers()
 void print_bitmap()
 {
 	char bitmap[B];
-	io_system.read_block(0,bitmap,B);
+	io_system.read_block(0,bitmap);
 	
 	int n = B / BITS;//is the number of bytes required to store the bitmap in block 0
 	for(int k = n;k >= 0;--k)
@@ -64,7 +64,7 @@ void print_blocks()
 	for(int k = 0;k < B;++k)
 	{
 		char block[B];
-		io_system.read_block(k,block,B);
+		io_system.read_block(k,block);
 
 		printf("logical_index: %d\n", k);
 		for(int i = 0;i < B; i += sizeof(int))
@@ -86,11 +86,9 @@ static void create(char* filename)
 	{
 	//find a free file descriptor in ldisk
 		char block[B];
-		io_system.read_block(logical_index,block,B);
-		int numInts = B / sizeof(int);//16
-		int numFDsPerBlock = numInts / FD_SIZE;//4
-
-		for(int k = 0;k < B; k += numFDsPerBlock)
+		io_system.read_block(logical_index,block);
+		
+		for(int k = 0;k < B; k += FDS_PER_BLOCK)
 		{
 			int fdValue = *(int*)(block + sizeof(int) * k);
 			if(fdValue == FREE)
@@ -98,7 +96,7 @@ static void create(char* filename)
 				//mark as taken
 				//int taken = 0;
 				//memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
-				fd_index = (sizeof(int) * k) + (numFDsPerBlock * (logical_index - 1));
+				fd_index = (sizeof(int) * k) + (FDS_PER_BLOCK * (logical_index - 1));
 				break;
 			}
 		}
@@ -113,11 +111,11 @@ static void create(char* filename)
 	}
 
 	char directorymap[B];
-	io_system.read_block(1,directorymap,B);
+	io_system.read_block(1,directorymap);
 
 	int directory_filelen = *(int*)(&directorymap[0]);
-	int dir_indices[FD_SIZE - 1];
-	for(int i = 0;i < FD_SIZE - 1;++i)
+	int dir_indices[DISK_BLOCKS_COUNT];
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
 		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
 	}
@@ -126,9 +124,8 @@ static void create(char* filename)
 	//TODO: check if directory entry already exists in file... if it does return error
 	char dir_entry[4];
 	int dir_entry_fd;
-	int dir_entry_size = 2;//number of integers per dir entry
 	rewind(directory_file);
-	while(fscanf(directory_file,"%s %d",dir_entry,&dir_entry_fd) == dir_entry_size)
+	while(fscanf(directory_file,"%s %d",dir_entry,&dir_entry_fd) == DIR_ENTRY_CAPACITY)
 	{
 		if(strcmp(filename,dir_entry) == 0)
 		{
@@ -140,14 +137,14 @@ static void create(char* filename)
 	//when create function is invoked, does it promise to keep an updated list of directory entries in both on ldisk and on the file?
 
 	//check if directory entry exists on ldisk
-	for(int i = 0;i < FD_SIZE - 1;++i)
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
 		if(dir_indices[i] == FREE) //then we know that directory entry does not exist since a datablock has not been assigned for the directory fd
 			break;
 		else
 		{
 			char directoryData[B];
-			io_system.read_block(dir_indices[i],directoryData,B);
+			io_system.read_block(dir_indices[i],directoryData);
 
 			int dir_entry_capacity = B / sizeof(int) / 2;
 			int dir_entry_len = sizeof(int) * 2;
@@ -164,7 +161,7 @@ static void create(char* filename)
 	}
 
 
-	for(int i = 0;i < FD_SIZE - 1;++i)
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
 		//if dir_index isn't allocated to a data block,find a data block to assign it to in ldisk
 		//find free data block directory can use to store its directory entries on ldisk
@@ -183,10 +180,11 @@ static void create(char* filename)
 			}	
 		}
 	
-		//TODO: find a location on ldisk to store directory entry
+		//find a location on ldisk to store directory entry
 		int block_number = dir_indices[i];
 		char directoryData[B];
-		io_system.read_block(block_number,directoryData,B);
+		io_system.read_block(block_number,directoryData);
+		//TODO: REPLACE DIR_ENTRY_CAPACITY WITH #DEFINE
 		int dir_entry_capacity = B / sizeof(int) / 2; //8 directory entries per data block
 		int dir_entry_len = sizeof(int) * 2;//how many integers each dir entry can hold in bytes
 		for(int k = 0;k < dir_entry_capacity; ++k)
@@ -210,9 +208,9 @@ static void create(char* filename)
 				//printf("directory file length: %d\n",directory_filelen);
 
 				//fill both entries ~ write directory data back to ldisk
-				io_system.write_block(block_number,directoryData, B);
+				io_system.write_block(block_number,directoryData);
 
-				i = FD_SIZE - 1;//do this to stop outer loop
+				i = DISK_BLOCKS_COUNT;//do this to stop outer loop
 				break;
 			}
 		}
@@ -221,7 +219,7 @@ static void create(char* filename)
 	}
 
 	//write back to directory fd to update ldisk
-	io_system.write_block(1,directorymap,B);
+	io_system.write_block(1,directorymap);
 	
 }
 
@@ -291,7 +289,7 @@ void init_bitmap()
 	char bitmap[B] = {0};
 	for(int i = 0;i < BITS - 1;++i)
 		bitmap[0] = bitmap[0] | (0x01 << i);
-	io_system.write_block(0,bitmap,B);
+	io_system.write_block(0,bitmap);
 	
 }
 
@@ -303,7 +301,7 @@ void init_dir()
 	memset(dirmap,FREE,B);
 	//fd0, block 1 is reserved as directory file descriptor with file len initialized to 0 assuming its a new disk
 	dirmap[0] = 0;
-	io_system.write_block(1,(char*)dirmap,B);
+	io_system.write_block(1,(char*)dirmap);
 }
 
 void init_disk()
@@ -318,7 +316,7 @@ void init_disk()
 			memcpy(&block[i],&free,sizeof(int));
 		}
 
-		io_system.write_block(logical_index,(char*)block,B);			
+		io_system.write_block(logical_index,(char*)block);			
 	}
 
 }
@@ -353,7 +351,7 @@ static int init(char* filename)
 		{
 			char data[B];
 			fread((char*)data,sizeof(char),B,ldisk_file);
-			io_system.write_block(l,data,B);
+			io_system.write_block(l,data);
 		}
 
 		//restore directory file contents:
@@ -365,15 +363,15 @@ static int init(char* filename)
 		}
 
 		int dirmap[B / sizeof(int)];
-		io_system.read_block(1,(char*)dirmap,B);
+		io_system.read_block(1,(char*)dirmap);
 		//locate on disk where each datablock is in the directory fd to restore directory file contents
-		for(int i = 1;i < FD_SIZE;++i)
+		for(int i = 1;i < FD_CAPACITY;++i)
 		{
 			//directory fd has no more file content information stored in its disk map
 			if(dirmap[i] == FREE) break;
 
 			char directoryData[B];
-			io_system.read_block(dirmap[i],directoryData,B);
+			io_system.read_block(dirmap[i],directoryData);
 			
 			int entryBytes = sizeof(int) * 2;//2 integers = 8 bytes
 			int numEntriesPerBlock = B / sizeof(int) / 2;
@@ -421,7 +419,7 @@ static int save(char* filename)
 	for(int l = 0;l < L;++l)
 	{
 		char data[B];
-		io_system.read_block(l,data,B);
+		io_system.read_block(l,data);
 		fwrite(data,sizeof(char),sizeof(data),ldisk_file);	
 	}
 
@@ -436,7 +434,7 @@ static int isBitEnabled(int logical_index)
 	assert(logical_index >= 0 && logical_index < L);
 
 	char bitmap[B] = {0};
-	io_system.read_block(0,bitmap,64);
+	io_system.read_block(0,bitmap);
 
 	//since each byte is 8 bits and ldisk is a 2d array of characters... the first 8 character bytes in block 0 of the array refer to the disk's bitmap
 	//we have take the modulus here to ensure it grabs the correct bit of the correct index
@@ -455,27 +453,27 @@ static void enableBit(int logical_index)
 	assert(logical_index >= 0 && logical_index < L);
 	
 	char bitmap[B];
-	io_system.read_block(0,bitmap,B);
+	io_system.read_block(0,bitmap);
 
 	int bucket_index = logical_index / BITS;
 	int bit_index = logical_index % BITS;
 
 	//reminder: the bit mask is initialized from  msb to lsb order
 	bitmap[bucket_index] = bitmap[bucket_index] | MASK[BITS - 1 - bit_index];
-	io_system.write_block(0,bitmap,B);	
+	io_system.write_block(0,bitmap);	
 }
 
 static void disableBit(int logical_index)
 {
 	assert(logical_index >= 0 && logical_index < L);
 
-	char bitmap[B] = {0};
-	io_system.read_block(0,bitmap,64);
+	char bitmap[B];
+	io_system.read_block(0,bitmap);
 
 	int bucket_index = logical_index / BITS;
 	int bit_index = logical_index % BITS;
 	bitmap[bucket_index] = bitmap[bucket_index] & (~MASK[BITS - 1 - bit_index]);
-	io_system.write_block(0,bitmap,64);
+	io_system.write_block(0,bitmap);
 }                        
 
 filespace_struct const file_system = 

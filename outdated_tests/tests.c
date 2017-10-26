@@ -127,7 +127,9 @@ Test(io_interface, read_block_integer, .init = setup, .fini = teardown)
 		//pdisk.buf[logical_index][i] = 'a';
 		ldisk[logical_index][i] = 'a';
 	}
-	
+
+//i might get stack smashing if i remove the third parameter...making these
+//tests useless	
 	io_system.read_block(logical_index,(char*)&number,sizeof(number));
 	// "aaaa" as an integer value = 1633771873
 	//int eValue = *(int*)pdisk.buf[logical_index];
