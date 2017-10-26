@@ -79,9 +79,6 @@ void print_blocks()
 //create a new file with the specified name sym_name
 static void create(char* filename)
 {
-	//printf("sizeof(filename): %lu\n",sizeof(*filename));
-	//assert(sizeof(filename) <= 4);
-
 	printf("create file: %s\n",filename);
 
 	int fd_index = -1;	
@@ -99,43 +96,132 @@ static void create(char* filename)
 			if(fdValue == FREE)
 			{
 				//mark as taken
-				int taken = 0;
-				memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
+				//int taken = 0;
+				//memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
 				fd_index = (sizeof(int) * k) + (numFDsPerBlock * (logical_index - 1));
 				break;
 			}
 		}
 		
-		if(fd_index != -1)
-			break;		
+		if(fd_index != -1) //file descriptor is found
+			break;
+		if(fd_index == -1 && logical_index == 6)
+		{
+			printf("Error: not enough space to store %s on ldisk\n",filename);
+			return;
+		}
 	}
 
-	//THIS IS ALL HARDCODED RIGHT NOW SINCE I DON'T HAVE CODE THE INITIALIZES THE DIRECTORY
-	//find a free directory entry in the directory file and on disk
 	char directorymap[B];
 	io_system.read_block(1,directorymap,B);
-	//first block number as to where to find the data to locate the free directory entry in the file
-	int dir_datablock_index = *(int*)(&directorymap[4]);
 
-	char directoryData[B];
-	io_system.read_block(dir_datablock_index,directoryData,B);
+	int directory_filelen = *(int*)(&directorymap[0]);
+	int dir_indices[FD_SIZE - 1];
+	for(int i = 0;i < FD_SIZE - 1;++i)
+	{
+		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
+	}
 
-	//TODO: check if directoryData entry already has valid entry in it... and if it does, iterate to another directory entry until a free one has be found
+
+	//TODO: check if directory entry already exists in file... if it does return error
+	char dir_entry[4];
+	int dir_entry_fd;
+	int dir_entry_size = 2;//number of integers per dir entry
+	rewind(directory_file);
+	while(fscanf(directory_file,"%s %d",dir_entry,&dir_entry_fd) == dir_entry_size)
+	{
+		if(strcmp(filename,dir_entry) == 0)
+		{
+			printf("error: %s already exists in directory file\n",filename);
+				return;//-1
+		}
+	}
+
+	//when create function is invoked, does it promise to keep an updated list of directory entries in both on ldisk and on the file?
+
+	//check if directory entry exists on ldisk
+	for(int i = 0;i < FD_SIZE - 1;++i)
+	{
+		if(dir_indices[i] == FREE) //then we know that directory entry does not exist since a datablock has not been assigned for the directory fd
+			break;
+		else
+		{
+			char directoryData[B];
+			io_system.read_block(dir_indices[i],directoryData,B);
+
+			int dir_entry_capacity = B / sizeof(int) / 2;
+			int dir_entry_len = sizeof(int) * 2;
+			for(int k = 0;k < dir_entry_capacity; ++k)
+			{
+				char* entry_name = (char*)(&directoryData[k * dir_entry_len]);
+				if(strcmp(entry_name,filename) == 0)
+				{
+					printf("error: %s already exists in the directory ldisk\n",filename);
+					return;//-1
+				}
+			}
+		}
+	}
 
 
-	//hard code directory filename and its descriptor index for now!
-	//directory entry on disk can hold 2 integers
-	//1st entry is filename
-	//2nd entry is file descriptor index
-	memcpy(&(directoryData[0]),filename,sizeof(char) * 4);
-	memcpy(&(directoryData[4]),&fd_index,sizeof(fd_index));	
+	for(int i = 0;i < FD_SIZE - 1;++i)
+	{
+		//if dir_index isn't allocated to a data block,find a data block to assign it to in ldisk
+		//find free data block directory can use to store its directory entries on ldisk
+		if(dir_indices[i] == FREE)
+		{
+			//hardcode next min free block to be index 7
+			for(int logical_index = 7; logical_index < B; ++logical_index)
+			{
+				if(file_system.isBitEnabled(logical_index) == 0)
+				{
+					dir_indices[i] = logical_index;//assign block_number to an open datablock on ldisk for the directory fd
+					memcpy( &directorymap[ (i + 1) * sizeof(int) ], &logical_index,sizeof(int));
+					file_system.enableBit(logical_index);
+					break;
+				}
+			}	
+		}
+	
+		//TODO: find a location on ldisk to store directory entry
+		int block_number = dir_indices[i];
+		char directoryData[B];
+		io_system.read_block(block_number,directoryData,B);
+		int dir_entry_capacity = B / sizeof(int) / 2; //8 directory entries per data block
+		int dir_entry_len = sizeof(int) * 2;//how many integers each dir entry can hold in bytes
+		for(int k = 0;k < dir_entry_capacity; ++k)
+		{
+			//if file name is not assigned (-1), then this entry slot is free
+			int entry_status = *(int*)(&directoryData[k * dir_entry_len]);
+			if(entry_status == FREE)
+			{
+				//1st entry is filename, 2nd entry is fd index
+				memcpy(&(directoryData[k * dir_entry_len]),filename,sizeof(char) * 4);
+				memcpy(&(directoryData[k * dir_entry_len + sizeof(int)]),&fd_index,sizeof(fd_index));
+				//if the directory entry does not exist, write it to the directory file
+				fprintf(directory_file,"%s %d",filename,fd_index);
 
-	//when I open the directory file.. I have to make sure I open it as append mode to ensure I don't override previous directory entries if an existing ldisk file was loaded
-	//write free directory entry to directory file ~ I don't understand what rewinding means in his instructions
-	fprintf(directory_file,"%s %d\n",filename,fd_index);
+				printf("directory data entry: %s %d\n",(char*)&directoryData[k * dir_entry_len],*(int*)&directoryData[k * dir_entry_len + sizeof(int)]);
 
-	//fill both entries ~ write directory data back to ldisk
-	io_system.write_block(dir_datablock_index,directoryData, B);
+				//update directory file length
+				directory_filelen = ftell(directory_file); 
+				memcpy(&directorymap[0],&directory_filelen,sizeof(int));
+
+				printf("directory file length: %d\n",directory_filelen);
+
+				//fill both entries ~ write directory data back to ldisk
+				io_system.write_block(block_number,directoryData, B);
+
+				i = FD_SIZE - 1;//do this to stop outer loop
+				break;
+			}
+		}
+		
+
+	}
+
+	//write back to directory fd to update ldisk
+	io_system.write_block(1,directorymap,B);
 	
 }
 
@@ -244,7 +330,8 @@ static int init(char* filename)
 {
 	//init_mask();
 	//init_file_pointers();
-	
+
+	//TODO: make ldisk_file global	
 	FILE* ldisk_file = fopen(filename,"r");
 
 	int status = -1;
@@ -253,6 +340,7 @@ static int init(char* filename)
 	{
 		status = 0;
 		puts("disk initialized");
+		init_mask();
 		init_disk();
 		init_bitmap();
 		init_dir();
@@ -263,7 +351,7 @@ static int init(char* filename)
 		status = 1;
 		puts("disk restored");
 		fclose(ldisk_file);
-		//TODO: load contents of file (ldisk.txt) into ldisk
+		//TODO: load contents of file (ldisk.txt) into ldisk ~ I don't know what this file looks like yet
 		// 1. load in bitmap (block 0)
 		// 2. load in fds (blocks 1 to 6)
 		// 3. load in directory data (ranges from 1 to 3 data blocks)
@@ -279,11 +367,14 @@ static int save(char* filename)
 {
 	if(directory_file != NULL)
 		fclose(directory_file);
-	//for(int i = 0;i < FILES_COUNT; ++i)
-	//{
-	//	if(files[i] != NULL)
-	//		fclose(files[i]);
-	//}
+	for(int i = 0;i < FILES_COUNT; ++i)
+	{
+		if(files[i] != NULL)
+			fclose(files[i]);
+	}
+
+	//TODO: save all contents stored on ldisk to text file!
+
 	return -1;
 }
 
@@ -312,15 +403,15 @@ static void enableBit(int logical_index)
 {
 	assert(logical_index >= 0 && logical_index < L);
 	
-	char bitmap[B] = {0};
-	io_system.read_block(0,bitmap,64);
+	char bitmap[B];
+	io_system.read_block(0,bitmap,B);
 
 	int bucket_index = logical_index / BITS;
 	int bit_index = logical_index % BITS;
 
 	//reminder: the bit mask is initialized from  msb to lsb order
 	bitmap[bucket_index] = bitmap[bucket_index] | MASK[BITS - 1 - bit_index];
-	io_system.write_block(0,bitmap,64);	
+	io_system.write_block(0,bitmap,B);	
 }
 
 static void disableBit(int logical_index)

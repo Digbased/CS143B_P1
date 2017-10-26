@@ -10,6 +10,12 @@ int main(int argc,char* argv[])
 	file_system.init(NULL);
 	print_bitmap();
 	print_blocks();
+
+	file_system.create("abc");
+	print_bitmap();
+	print_blocks();
 	
+	file_system.save(NULL);
+
 	return 0;
 }
