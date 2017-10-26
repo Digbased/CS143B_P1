@@ -133,7 +133,7 @@ static void create(char* filename)
 		if(strcmp(filename,dir_entry) == 0)
 		{
 			printf("error: %s already exists in directory file\n",filename);
-				return;//-1
+			return;//-1
 		}
 	}
 
@@ -199,15 +199,15 @@ static void create(char* filename)
 				memcpy(&(directoryData[k * dir_entry_len]),filename,sizeof(char) * 4);
 				memcpy(&(directoryData[k * dir_entry_len + sizeof(int)]),&fd_index,sizeof(fd_index));
 				//if the directory entry does not exist, write it to the directory file
-				fprintf(directory_file,"%s %d",filename,fd_index);
+				fprintf(directory_file,"%s %d\n",filename,fd_index);
 
-				printf("directory data entry: %s %d\n",(char*)&directoryData[k * dir_entry_len],*(int*)&directoryData[k * dir_entry_len + sizeof(int)]);
+				//printf("directory data entry: %s %d\n",(char*)&directoryData[k * dir_entry_len],*(int*)&directoryData[k * dir_entry_len + sizeof(int)]);
 
 				//update directory file length
 				directory_filelen = ftell(directory_file); 
 				memcpy(&directorymap[0],&directory_filelen,sizeof(int));
 
-				printf("directory file length: %d\n",directory_filelen);
+				//printf("directory file length: %d\n",directory_filelen);
 
 				//fill both entries ~ write directory data back to ldisk
 				io_system.write_block(block_number,directoryData, B);
@@ -298,7 +298,7 @@ void init_bitmap()
 //helper function to initialize the directory when ldisk first boots up
 void init_dir()
 {
-	directory_file = fopen("dir", "a+");
+	directory_file = fopen("directory.txt", "w+");
 	int dirmap[B / sizeof(int)];
 	memset(dirmap,FREE,B);
 	//fd0, block 1 is reserved as directory file descriptor with file len initialized to 0 assuming its a new disk
@@ -328,10 +328,9 @@ void init_disk()
 //returns 1 if file does exist
 static int init(char* filename)
 {
-	//init_mask();
-	//init_file_pointers();
+	init_mask();
+	init_file_pointers();
 
-	//TODO: make ldisk_file global	
 	FILE* ldisk_file = fopen(filename,"r");
 
 	int status = -1;
@@ -340,7 +339,6 @@ static int init(char* filename)
 	{
 		status = 0;
 		puts("disk initialized");
-		init_mask();
 		init_disk();
 		init_bitmap();
 		init_dir();
@@ -349,13 +347,52 @@ static int init(char* filename)
 	else // if filename exists and successfully loads
 	{
 		status = 1;
-		puts("disk restored");
+		printf("disk restored from file: %s\n",filename);
+		//load contents of file (ldisk.txt) into ldisk
+		for(int l = 0;l < L;++l)
+		{
+			char data[B];
+			fread((char*)data,sizeof(char),B,ldisk_file);
+			io_system.write_block(l,data,B);
+		}
+
+		//restore directory file contents:
+		directory_file = fopen("directory.txt","w+");
+		if(directory_file == NULL)
+		{
+			printf("Error: cannot open file directory.txt\n");
+			return -1;
+		}
+
+		int dirmap[B / sizeof(int)];
+		io_system.read_block(1,(char*)dirmap,B);
+		//locate on disk where each datablock is in the directory fd to restore directory file contents
+		for(int i = 1;i < FD_SIZE;++i)
+		{
+			//directory fd has no more file content information stored in its disk map
+			if(dirmap[i] == FREE) break;
+
+			char directoryData[B];
+			io_system.read_block(dirmap[i],directoryData,B);
+			
+			int entryBytes = sizeof(int) * 2;//2 integers = 8 bytes
+			int numEntriesPerBlock = B / sizeof(int) / 2;
+			for(int k = 0;k < numEntriesPerBlock; ++k)
+			{
+				char* entry_name = (char*)(&directoryData[k * sizeof(char) * entryBytes]);
+				int entry_fd = *(int*)(&directoryData[k * entryBytes + sizeof(int)]);
+				
+				//don't output junk to directory file
+				if(entry_fd == FREE) break;
+
+				fprintf(directory_file,"%s %d\n",entry_name,entry_fd);
+			}	
+		}
+	
+
+		//TODO: Also restore each file loaded from ldisk
+
 		fclose(ldisk_file);
-		//TODO: load contents of file (ldisk.txt) into ldisk ~ I don't know what this file looks like yet
-		// 1. load in bitmap (block 0)
-		// 2. load in fds (blocks 1 to 6)
-		// 3. load in directory data (ranges from 1 to 3 data blocks)
-		// 4. load in data blocks for other files to be loaded on disk
 
 	}
 
@@ -373,9 +410,23 @@ static int save(char* filename)
 			fclose(files[i]);
 	}
 
-	//TODO: save all contents stored on ldisk to text file!
+	//save all contents stored in ldisk to a file
+	FILE* ldisk_file = fopen(filename,"w");
+	if(ldisk_file == NULL)
+	{
+		printf("Error: %s could not be saved\n",filename);
+		return -1;
+	}
 
-	return -1;
+	for(int l = 0;l < L;++l)
+	{
+		char data[B];
+		io_system.read_block(l,data,B);
+		fwrite(data,sizeof(char),sizeof(data),ldisk_file);	
+	}
+
+	fclose(ldisk_file);
+	return 0;
 }
 
 
