@@ -12,13 +12,15 @@
 #define FREE -1
 
 extern char ldisk[L][B];
+extern open_file_table oft[OFT_SIZE];
 
 //8 BITS used to set and clear bits in the bitmap of block 0
 static int MASK[BITS]; 
 
-//files available in the OFT ~ might make into static later on
+//files available in the OFT ~ might make into static later on ~ don't use this...
 FILE* directory_file;
 FILE* files[FILES_COUNT];
+
 
 //helper function to initialize bit masks
 //initialize 8 bit masks diagonally
@@ -242,7 +244,7 @@ static int destroy(char* filename)
 	char directorymap[B];
 	io_system.read_block(1,directorymap);
 	
-	int directory_filelen = *(int*)(&directorymap[0]);
+	//int directory_filelen = *(int*)(&directorymap[0]);
 	int dir_indices[DISK_BLOCKS_COUNT];
 	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{

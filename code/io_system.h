@@ -9,6 +9,25 @@
 //the simulated hard drive disk
 char ldisk[L][B];
 
+//open file table (oft)
+typedef struct
+{
+	char buffer[B];
+	int cur_pos;//current_position
+	int fd_index;//file descriptor index
+	int file_len;
+
+}open_file_table;
+
+open_file_table oft[OFT_SIZE];
+
+typedef struct
+{
+	int file_len;
+	int block_numbers[DISK_BLOCKS_COUNT];
+}file_descriptor;
+
+//io_system struct
 typedef struct
 {
 	//reads B  bytes into dest array
@@ -22,5 +41,11 @@ typedef struct
 } iospace_struct;
 extern iospace_struct const io_system;
 
+//helper functions--- might move to io_system
+file_descriptor GetFD(int block_number,int fd_index);
 
+//transfers data on disk located at block_number  to one of the open file table entries oft_index
+void TransferDataToBuffer(int oft_index, int block_number);
+
+void TransferBufferToDisk(int oft_index,int block_number);
 #endif
