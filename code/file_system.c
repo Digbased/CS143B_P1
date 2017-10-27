@@ -243,7 +243,7 @@ static int destroy(char* filename)
 	//find the file descriptor by searching the directory
 	char directorymap[B];
 	io_system.read_block(1,directorymap);
-	
+
 	//int directory_filelen = *(int*)(&directorymap[0]);
 	int dir_indices[DISK_BLOCKS_COUNT];
 	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
@@ -308,18 +308,96 @@ static int destroy(char* filename)
 	return 1;
 }
 
+//helper function for open to retrieve the fd of the associated filename
+//returns the fd_index of the filename, otherwise return -1 if not found
+int open_fd(char* filename)
+{
+	int fd_index = -1;	
+	file_descriptor dir_fd = GetFD(0);
+	int dir_entry_size = sizeof(int) * DIR_ENTRY_CAPACITY; //size of each dir entry in bytes
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	{
+		char dirContents[B];
+		io_system.read_block(dir_fd.block_numbers[i],dirContents);
+		for(int k = 0;k < B;k += dir_entry_size)
+		{
+			char* sym_name = (char*)(&dirContents[k]);
+			if(strcmp(sym_name,filename) == 0)
+			{
+				fd_index = *(int*)(&dirContents[k + sizeof(int)]);
+				break;
+			}	
+		}
+
+	}
+
+	return fd_index;
+}
+
 //open the named file for reading and writing
 //returns an index value which is used by subsequent read, write, lseek, or close operations (OFT index)
 static int open(char* filename)
 {
-	printf("open file: %s\n",filename);
-	return -1;
+	
+	//search directory to find index of file descriptor	
+	int fd_index = open_fd(filename);
+	if(fd_index == -1)
+	{
+		printf("error: could not open %s\n",filename);
+		return -1;
+	}
+	
+	//allocate a free OFT entry(reuse deleted entries)
+	int oft_index = -1;
+	for(int i = 1;i < OFT_SIZE;++i)
+	{
+		if(oft[i].fd_index == FREE)
+		{
+			oft_index = i;
+			oft[i].fd_index = fd_index;
+			oft[i].cur_pos = 0; 
+			
+			file_descriptor data_fd = GetFD(fd_index);
+			oft[i].file_len = data_fd.file_len;
+
+			//read the first data block into the oft buffer
+			char data[B];
+			io_system.read_block(data_fd.block_numbers[0],data);
+			memcpy(oft[i].buffer,data,sizeof(data));
+			break;
+		}
+	}
+
+	if(oft_index == -1)
+	{
+		printf("Error: all entries in OFT are in use\n");
+	}
+	else
+	{
+		printf("open file: %s\n",filename);
+	}
+
+	return oft_index;
 }
 
 //closes the specified file
-static void close(int index)
+static void close(int oft_index)
 {
+	assert(oft_index >= 0 && oft_index < OFT_SIZE);
+	
+	//write buffer to disk ~ how do I know which block_number to write buffer to?
+	file_descriptor data_fd = GetFD(oft[oft_index].fd_index);
+
+	char dataBlock[B];
+	int bIndex = oft[oft_index].block_numbers[0];//is this the current block number to write back to?
+	io_system.write_block(bIndex,oft[oft_index].buffer);
+
+	//free OFT entry
+	oft[oft_index].fd_index = FREE;	
+
+
 	printf("close file at index: %d\n",index);
+	//return status
 }
 
 // -- operations available after opening the file --//
@@ -330,10 +408,46 @@ static void close(int index)
 //reading begins at the current position of the file
 static int read(int index,char* mem_area,int count)
 {
+	assert(index >= 0 && index < OFT_SIZE);
 	printf("begin reading %d bytes from open file to mem_area\n",count);
+	
+	//compute the position within read/write buffer that corresponds to cur_pos within file
+	open_file_table* cur_file = &oft[index];	
+	int buf_pos = cur_file->file_len % BYTES_PER_BLOCK; 
+
+	int disk_pos = buf_pos + cur_file->cur_pos;
+	
+	int it = 0;
+	while(true)
+	{
+		//if the desired count or eof is reached; update current position and return status
+		if(it == count)//or eof is reached to code...
+		{
+			cur_file->cur_pos = disk_pos;
+			return it;
+		}
+		//if end of buffer is reached
+		//1. write the buffer into the appropriate block on disk (if modified)
+		//2. read the next sequential block from disk into buffer;
+		//3. continue copying bytes from buffer into mem_area
+		if(buf_pos >= BYTES_PER_BLOCK)
+		{
+			//describes which block index to reference for data when looking at the corresponding data's fd
+			int block_index = cur_file->file_len / BYTES_PER_BLOCK;
+			file_descriptor data_fd = GetFD(cur_file->fd_index);
+			io_system.read_block(data_fd.block_numbers[block_index],cur_file->buffer);		
+		}
+
+		//copy oft buffer into mem area
+		mem_area[it++] = cur_file->buffer[buf_pos++];
+
+	}
+
+
 	return -1;
 }
 
+//Do this one next ~~
 //returns number of bytes written from main memory starting at mem_area into the specified file
 //writing begins at the current position of the file
 static int write(int index,char* mem_area,int count)
@@ -398,6 +512,24 @@ void init_disk()
 
 }
 
+void init_oft()
+{
+	//directory oft
+	oft[0].cur_pos = 0;
+	oft[0].file_len = 0;
+	oft[0].fd_index = 0;
+	memset(oft[0].buffer,0,sizeof(B));
+
+	//a file is free in oft if its fd_index = -1
+	//3 other files
+	for(int i = 1;i < OFT_SIZE;++i)
+	{
+		oft[i].cur_pos = -1;
+		oft[i].file_len = -1;
+		oft[i].fd_index = -1;
+	}
+}
+
 //restores ldisk from file.txt or create a new one if no file exists
 //returns 0 if disk is initialized with no filename specified or file does not exist and will be created..
 //returns 1 if file does exist
@@ -405,6 +537,7 @@ static int init(char* filename)
 {
 	init_mask();
 	init_file_pointers();
+	init_oft();
 
 	FILE* ldisk_file = fopen(filename,"r");
 

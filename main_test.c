@@ -37,23 +37,20 @@ int main(int argc,char* argv[])
 	print_bitmap();
 	print_blocks();
 	
-	char directory_metadata[B];
-	io_system.read_block(1,directory_metadata);
-	
+	file_descriptor dir_fd1 = GetFD(0);	
+	printf("file_len: %d\n",dir_fd1.file_len);
+	printf("block numbers:");
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+		printf("%d ",dir_fd1.block_numbers[i]);	
+	printf("\n");
+
+	//print dir entries
+	PrintDirEntries();
+
 //	file_system.destroy("abc");
 //	print_bitmap();
 //	print_blocks();
-		
-
-	//goal is to grab the directory datablocks to see the actual contents of each directory entry listing
-
-	file_descriptor dir_fd = GetFD(1,0);
-	printf("file_len: %d\n",dir_fd.file_len);
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
-		printf("block: %d\n",dir_fd.block_numbers[i]);	
-
-
-
+//		
 	file_system.save(argv[1]);
 
 	return 0;

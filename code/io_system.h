@@ -27,6 +27,12 @@ typedef struct
 	int block_numbers[DISK_BLOCKS_COUNT];
 }file_descriptor;
 
+typedef struct
+{
+	char sym_name[4];//filename
+	int fd_index;	
+}directory_entry;
+
 //io_system struct
 typedef struct
 {
@@ -42,7 +48,10 @@ typedef struct
 extern iospace_struct const io_system;
 
 //helper functions--- might move to io_system
-file_descriptor GetFD(int block_number,int fd_index);
+int GetBlockNumber(int fd_index);
+file_descriptor GetFD(int fd_index);
+
+void PrintDirEntries();
 
 //transfers data on disk located at block_number  to one of the open file table entries oft_index
 void TransferDataToBuffer(int oft_index, int block_number);
