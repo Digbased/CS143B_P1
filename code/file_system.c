@@ -249,21 +249,61 @@ static int destroy(char* filename)
 		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
 	}
 	
-	for(int i = 0;i < B;++i)
+	int target_fd_value = -1;
+	int target_fd_location = -1;
+	int target_dir_index = -1;
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
-		
-	}
-		
+		printf("block number: %d\n",dir_indices[i]);
+		if(dir_indices[i] == FREE)
+		{
+			printf("Error: %s cannot be deleted.. not in directory\n",filename);
+			return 0;
+		}
 
-	//remove the directory entry
+		char directoryData[B];
+		io_system.read_block(dir_indices[i],directoryData);
+		int dir_entry_len = DIR_ENTRY_CAPACITY * sizeof(int);//size of each directory entry in bytes
+		for(int b = 0;b < B;b += dir_entry_len)
+		{
+			char* entry_name = (char*)(&directoryData[b]);
+			if(strcmp(entry_name,filename) == 0)
+			{
+				printf("THE SAME\n");
+				target_dir_index = dir_indices[i];
+				target_fd_value = *(int*)(&directoryData[b + sizeof(int)]);
+				target_fd_location = b + sizeof(int);
+				i = DISK_BLOCKS_COUNT;
+				break;
+			}
+		}
+	}
+
+	if(target_fd_value == -1)
+	{
+		printf("Error: %s could not be found\n",filename);
+		return 0;
+	}
+
+	//remove the directory entry ~ entry_name and entry_fd
+	char directoryData[B];
+	io_system.read_block(target_dir_index,directoryData);
+	int reset = -1;
+	memcpy(&directoryData[target_fd_location],&reset,sizeof(int)); //entry_fd
+	memcpy(&directoryData[target_fd_location - sizeof(int)],&reset,sizeof(char) * 4); //entry_name
+	io_system.write_block(target_dir_index,directoryData);
 
 	//Update the bitmap to reflect the freed blocks
-
-	//Free the file descriptor
-
-	//return status
+	file_system.disableBit(target_dir_index);
 	
-	return 0;
+	//Free the file descriptor
+	int freed = -1;
+	printf("target_fd_value: %d\n",target_fd_value * FD_CAPACITY);
+	memcpy(&directorymap[target_fd_value * FD_CAPACITY * sizeof(int)],&freed,sizeof(int));	
+	io_system.write_block(1,directorymap);
+
+	//return status	
+	return 1;
 }
 
 //open the named file for reading and writing
