@@ -13,7 +13,6 @@
 
 extern char ldisk[L][B];
 
-
 //8 BITS used to set and clear bits in the bitmap of block 0
 static int MASK[BITS]; 
 
@@ -81,7 +80,9 @@ static void create(char* filename)
 {
 	printf("create file: %s\n",filename);
 
-	int fd_index = -1;	
+	int fd_index = -1;
+	int target_fd_location = -1;//where the fd meta data is located in the logical blockk
+	int target_logical_index = -1;//which logical block on ldisk the fd was found
 	for(int logical_index = 1;logical_index < 7; ++logical_index)
 	{
 	//find a free file descriptor in ldisk
@@ -96,7 +97,9 @@ static void create(char* filename)
 				//mark as taken
 				//int taken = 0;
 				//memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
-				fd_index = (sizeof(int) * k) + (FDS_PER_BLOCK * (logical_index - 1));
+				fd_index = (k / FDS_PER_BLOCK) + (INTS_PER_BLOCK * (logical_index - 1));
+				target_logical_index = logical_index;
+				target_fd_location  = (sizeof(int) * k);
 				break;
 			}
 		}
@@ -110,6 +113,8 @@ static void create(char* filename)
 		}
 	}
 
+	
+
 	char directorymap[B];
 	io_system.read_block(1,directorymap);
 
@@ -121,7 +126,8 @@ static void create(char* filename)
 	}
 
 
-	//TODO: check if directory entry already exists in file... if it does return error
+	//TODO: Reimplement as open file table
+	// check if directory entry already exists in file... if it does return error
 	char dir_entry[4];
 	int dir_entry_fd;
 	rewind(directory_file);
@@ -134,8 +140,6 @@ static void create(char* filename)
 		}
 	}
 
-	//when create function is invoked, does it promise to keep an updated list of directory entries in both on ldisk and on the file?
-
 	//check if directory entry exists on ldisk
 	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
@@ -145,10 +149,9 @@ static void create(char* filename)
 		{
 			char directoryData[B];
 			io_system.read_block(dir_indices[i],directoryData);
-
-			int dir_entry_capacity = B / sizeof(int) / 2;
-			int dir_entry_len = sizeof(int) * 2;
-			for(int k = 0;k < dir_entry_capacity; ++k)
+	
+			int dir_entry_len = sizeof(int) * DIR_ENTRY_CAPACITY;
+			for(int k = 0;k < DIR_ENTRIES_PER_BLOCK; ++k)
 			{
 				char* entry_name = (char*)(&directoryData[k * dir_entry_len]);
 				if(strcmp(entry_name,filename) == 0)
@@ -168,7 +171,7 @@ static void create(char* filename)
 		if(dir_indices[i] == FREE)
 		{
 			//hardcode next min free block to be index 7
-			for(int logical_index = 7; logical_index < B; ++logical_index)
+			for(int logical_index = RESERVED_BLOCKS; logical_index < B; ++logical_index)
 			{
 				if(file_system.isBitEnabled(logical_index) == 0)
 				{
@@ -184,10 +187,8 @@ static void create(char* filename)
 		int block_number = dir_indices[i];
 		char directoryData[B];
 		io_system.read_block(block_number,directoryData);
-		//TODO: REPLACE DIR_ENTRY_CAPACITY WITH #DEFINE
-		int dir_entry_capacity = B / sizeof(int) / 2; //8 directory entries per data block
 		int dir_entry_len = sizeof(int) * 2;//how many integers each dir entry can hold in bytes
-		for(int k = 0;k < dir_entry_capacity; ++k)
+		for(int k = 0;k < DIR_ENTRIES_PER_BLOCK; ++k)
 		{
 			//if file name is not assigned (-1), then this entry slot is free
 			int entry_status = *(int*)(&directoryData[k * dir_entry_len]);
@@ -220,14 +221,48 @@ static void create(char* filename)
 
 	//write back to directory fd to update ldisk
 	io_system.write_block(1,directorymap);
+
+
+	//write new fd discovered in ldisk
+	char target_block[B];	
+	io_system.read_block(target_logical_index,target_block);
+	int empty = 0;
+	memcpy(target_block + target_fd_location,&empty,sizeof(int));
+	io_system.write_block(target_logical_index,target_block);	
 	
 }
 
-//destroy the named file
+//destroy the named file (assume that a file will not be open when the destroy call is made)
 //returns 1 on success, 0 on error
 static int destroy(char* filename)
 {
 	printf("destroy file: %s\n",filename);
+	
+	//find the file descriptor by searching the directory
+	char directorymap[B];
+	io_system.read_block(1,directorymap);
+	
+	int directory_filelen = *(int*)(&directorymap[0]);
+	int dir_indices[DISK_BLOCKS_COUNT];
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	{
+		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
+	}
+	
+	for(int i = 0;i < B;++i)
+	{
+		
+	}
+		
+
+	//remove the directory entry
+
+	//Update the bitmap to reflect the freed blocks
+
+	//Free the file descriptor
+
+	//return status
+	
 	return 0;
 }
 

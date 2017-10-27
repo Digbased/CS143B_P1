@@ -22,7 +22,7 @@
 
 //max number of directory entries held in ldisk ~ 24 entries = 24 descriptors
 #define MAX_DIR_ENTRIES ( ((DIR_BLOCKS) * (INTS_PER_BLOCK)) / (DIR_ENTRY_CAPACITY)) 
-//number of directory entries per block
+//number of directory entries per block ~ 8 directory entries
 #define DIR_ENTRIES_PER_BLOCK ((MAX_DIR_ENTRIES) / (DIR_BLOCKS))
 
 //number of blocks reserved for bitmap
@@ -30,9 +30,6 @@
 
 //number of reserved file descriptor blocks on ldisk ~ 6
 #define RESERVED_FD_BLOCKS (((MAX_DIR_ENTRIES) * (FD_CAPACITY)) / (INTS_PER_BLOCK))
-
-//number of directory entries per block ~  8 directory entries
-#define DIR_ENTRIES_PER_BLOCK ((MAX_DIR_ENTRIES) / (DIR_BLOCKS))
 
 //total number of reserved blocks on ldisk ~ 7
 #define RESERVED_BLOCKS ((RESERVED_BITMAP_BLOCKS) + (RESERVED_FD_BLOCKS))
