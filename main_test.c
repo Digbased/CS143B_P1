@@ -45,7 +45,8 @@ int main(int argc,char* argv[])
 	printf("\n");
 
 	//print dir entries
-	PrintDirEntries();
+//	PrintDirEntries();
+	file_system.directory();
 
 //	file_system.destroy("abc");
 //	print_bitmap();

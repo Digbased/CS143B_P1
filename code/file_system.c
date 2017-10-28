@@ -388,15 +388,14 @@ static void close(int oft_index)
 	//write buffer to disk ~ how do I know which block_number to write buffer to?
 	file_descriptor data_fd = GetFD(oft[oft_index].fd_index);
 
-	char dataBlock[B];
-	int bIndex = oft[oft_index].block_numbers[0];//is this the current block number to write back to?
+	int bIndex = data_fd.block_numbers[0];//is this the current block number to write back to?
 	io_system.write_block(bIndex,oft[oft_index].buffer);
 
 	//free OFT entry
 	oft[oft_index].fd_index = FREE;	
 
 
-	printf("close file at index: %d\n",index);
+	printf("close file at index: %d\n",oft_index);
 	//return status
 }
 
@@ -413,48 +412,135 @@ static int read(int index,char* mem_area,int count)
 	
 	//compute the position within read/write buffer that corresponds to cur_pos within file
 	open_file_table* cur_file = &oft[index];	
-	int buf_pos = cur_file->file_len % BYTES_PER_BLOCK; 
-
-	int disk_pos = buf_pos + cur_file->cur_pos;
-	
-	int it = 0;
-	while(true)
+	int buf_pos = cur_file->cur_pos % BYTES_PER_BLOCK; 	
+	int bytes_read = 0;
+	while(1)
 	{
 		//if the desired count or eof is reached; update current position and return status
-		if(it == count)//or eof is reached to code...
+		if(bytes_read == count)//or eof is reached to code...
 		{
-			cur_file->cur_pos = disk_pos;
-			return it;
+			cur_file->cur_pos += bytes_read;
+			return bytes_read;
 		}
 		//if end of buffer is reached
 		//1. write the buffer into the appropriate block on disk (if modified)
 		//2. read the next sequential block from disk into buffer;
 		//3. continue copying bytes from buffer into mem_area
-		if(buf_pos >= BYTES_PER_BLOCK)
+		if(buf_pos == BYTES_PER_BLOCK)
 		{
 			//describes which block index to reference for data when looking at the corresponding data's fd
-			int block_index = cur_file->file_len / BYTES_PER_BLOCK;
+			int block_index = (cur_file->cur_pos + buf_pos) / BYTES_PER_BLOCK;
+	
 			file_descriptor data_fd = GetFD(cur_file->fd_index);
+			//edge case ~ so if cur_pos is at 190.. and you are attempting to read 50 bytes.. only read the first 2 bytes..
+			if(block_index >= DISK_BLOCKS_COUNT || data_fd.block_numbers[block_index] == FREE)
+			{
+				printf("Warning: reading only the  first  %d bytes\n",bytes_read);
+				cur_file->cur_pos += bytes_read;
+				return bytes_read;
+			}
+
+			//I should write back the oft buffer to ldisk but I don't see the point as I'm not modifying the oft buffer in any way here...
+			io_system.write_block(data_fd.block_numbers[block_index - 1],cur_file->buffer);
+
+			//read next block
 			io_system.read_block(data_fd.block_numbers[block_index],cur_file->buffer);		
 		}
 
 		//copy oft buffer into mem area
-		mem_area[it++] = cur_file->buffer[buf_pos++];
-
+		mem_area[bytes_read++] = cur_file->buffer[buf_pos++];
 	}
-
 
 	return -1;
 }
 
-//Do this one next ~~
 //returns number of bytes written from main memory starting at mem_area into the specified file
 //writing begins at the current position of the file
 static int write(int index,char* mem_area,int count)
 {
+	assert(index >= 0 && index < OFT_SIZE);
+
+	open_file_table* cur_file = &oft[index];
+	//compute the position within read/write buffer that corresponds to current position within file
+	int buf_pos = cur_file->cur_pos % BYTES_PER_BLOCK;
+	int bytes_written = 0;
+
+	while(1)
+	{
+		if(bytes_written == count)
+		{
+			cur_file->cur_pos += bytes_written;
+			//update file length in descriptor and oft
+			cur_file->file_len += bytes_written;
+			char data_fd_contents[B];
+			int target_blocknumber = GetBlockNumber(cur_file->fd_index);
+			io_system.read_block(target_blocknumber,data_fd_contents);
+			((int*)data_fd_contents)[cur_file->fd_index * sizeof(int)] = cur_file->file_len;
+			io_system.write_block(target_blocknumber,data_fd_contents);
+
+			return bytes_written;
+		}
+
+		if(buf_pos == BYTES_PER_BLOCK)
+		{
+			int block_number = (cur_file->cur_pos + buf_pos) / BYTES_PER_BLOCK;
+			
+			if(block_number == DISK_BLOCKS_COUNT)
+			{
+				printf("Warning: eof reached\n");
+				return -1;
+			}
+			
+			file_descriptor data_fd = GetFD(cur_file->fd_index);
+			if(data_fd.block_numbers[block_number] == FREE) //if next data block is unallocated, find a new data block to assign it to
+			{
+				//search for a free block
+				int free_block_index = -1;
+				for(int l = RESERVED_BLOCKS;l < B;++l)
+				{
+					if(file_system.isBitEnabled(l) != 1)
+					{
+						free_block_index = l;
+						break;
+					}	
+				}
+				
+				//if no free blocks are found return with error
+				if(free_block_index == -1)
+				{
+					printf("Error: no more free blocks found to write to..\n");
+					return -1;
+				}
+				else
+				{
+					//allocate free block
+					file_system.enableBit(free_block_index);
+					//update file descriptor contents to include newly allocated block number
+					int logical_index = GetBlockNumber(cur_file->fd_index);
+					char fd_contents[B];
+				        io_system.read_block(logical_index,fd_contents);
+					((int*)fd_contents)[cur_file->fd_index * sizeof(int) + block_number] = free_block_index;
+					io_system.write_block(logical_index,fd_contents);
+
+					//write oft buffer to previous block number of ldisk
+					io_system.write_block(block_number - 1,cur_file->buffer);	
+				}
+						
+			}
+						
+		}	
+
+		//write mem_area into oft buffer
+		cur_file->buffer[buf_pos++] = mem_area[bytes_written];
+	}
+	
+		
 	printf("begin writing %d bytes from mem_area to open file\n",count);
 	return -1;
 }
+
+
+//~ DO NEXT ~~
 
 //move to the current position of the file to pos, where pos is an integer specifying
 //the number of bytes from the beginning of the file. When a file is initially opened,
@@ -463,12 +549,40 @@ static int write(int index,char* mem_area,int count)
 static void lseek(int index, int pos)
 {
 	printf("lseek to pos: %d at file index: %d\n",pos,index);
+
+	//if new position is not within the current data block:
+	// write the buffer into the appropriate block on disk
+	// read the new data block from disk into the buffer
+
+	//Set the current position to new position
+
+	//Return Status
 }
 
 //displays list of files and their lengths
 static void directory()
 {
-	printf("print out the current directory here\n");
+	file_descriptor dir_fd = GetFD(0);
+	for(int i = 0;i < DISK_BLOCKS_COUNT; ++i)
+	{
+		//stop reading if no more data blocks hold directory information
+		if(dir_fd.block_numbers[i] == FREE) break;
+
+		char dirContents[B];
+		io_system.read_block(dir_fd.block_numbers[i],dirContents);
+		int dir_entry_size = sizeof(int) * DIR_ENTRY_CAPACITY;
+		for(int k = 0;k < B;k += dir_entry_size)
+		{
+			int status = *(int*)(&dirContents[k]);
+			//similarly, if there are no more directory entries within B bytes of the block..stop
+			if(status == FREE) break;
+			
+			char* sym_name = (char*)(&dirContents[k]);
+			int file_len = *(int*)(&dirContents[k + sizeof(int)]);
+			printf("%s %d\n",sym_name,file_len);
+
+		}	
+	}
 }
 
 
