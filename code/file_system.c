@@ -129,7 +129,9 @@ static void create(char* filename)
 
 
 	//TODO: Reimplement as open file table
-	// check if directory entry already exists in file... if it does return error
+	// check if directory entry already exists in file... if it does return error	
+	
+	//old implementation of oft
 	char dir_entry[4];
 	int dir_entry_fd;
 	rewind(directory_file);
@@ -548,17 +550,32 @@ static int write(int index,char* mem_area,int count)
 //operation, it points to the byte immediately following the one that was accessed last.
 static void lseek(int index, int pos)
 {
+	//there are only 4 valid oft entries
+	assert(index >= 0 && index < OFT_SIZE);
+	open_file_table* cur_file = &oft[index];
+
+	//file can only contain 192 bytes at max
+	assert(pos >= 0 && pos < DIR_BLOCKS * BYTES_PER_BLOCK);
+
 	printf("lseek to pos: %d at file index: %d\n",pos,index);
 
 	//if new position is not within the current data block:
 	// write the buffer into the appropriate block on disk
 	// read the new data block from disk into the buffer
+	int target_blocknumber = pos / BYTES_PER_BLOCK;
+	int current_blocknumber = cur_file->cur_pos / BYTES_PER_BLOCK;
+	if(target_blocknumber != current_blocknumber)
+	{
+		io_system.write_block(current_blocknumber,cur_file->buffer);
+		io_system.read_block(target_blocknumber,cur_file->buffer);
+	}
 
 	//Set the current position to new position
-
+	cur_file->cur_pos = pos;
 	//Return Status
 }
 
+//reimplement using read,write and lseek
 //displays list of files and their lengths
 static void directory()
 {

@@ -27,8 +27,6 @@ int main(int argc,char* argv[])
 //
 //	printf("OFT_SIZE: %d\n",OFT_SIZE);
 	
-
-	//file_system.init(NULL);
 	file_system.init(argv[1]);
 	print_bitmap();
 	print_blocks();
@@ -45,7 +43,6 @@ int main(int argc,char* argv[])
 	printf("\n");
 
 	//print dir entries
-//	PrintDirEntries();
 	file_system.directory();
 
 //	file_system.destroy("abc");
