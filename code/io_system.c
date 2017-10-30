@@ -69,6 +69,23 @@ file_descriptor GetFD(int fd_index)
 	return fd;
 }
 
+void WriteFDToLDisk(int fd_index,file_descriptor fd)
+{
+	int block_number = GetBlockNumber(fd_index);
+	assert(block_number >= 0 && block_number < LOGICAL_BLOCKS);
+
+	int buffer[INTS_PER_BLOCK];
+	io_system.read_block(block_number,(char*)buffer);
+	int offset = (fd_index % sizeof(int)) * FD_CAPACITY;
+	buffer[offset] = fd.file_len;
+	for(int f = offset + 1,i = 0;i < DISK_BLOCKS_COUNT;++f,++i)
+	{
+		buffer[f] = fd.block_numbers[i];
+	}
+
+	io_system.write_block(block_number,(char*)buffer);
+}
+
 //the issue with this function is that we don't know ahead of time how many directory entries there are on ldisk
 void PrintDirEntries()
 {
@@ -102,10 +119,7 @@ void TransferDataToBuffer(int oft_index, int block_number)
 {
 	assert(oft_index >= 0 && oft_index < OFT_SIZE);
 	assert(block_number >= 0 && block_number < LOGICAL_BLOCKS);
-
-	char dataBlock[B];
-	io_system.read_block(block_number,dataBlock);
-	memcpy(oft[oft_index].buffer,dataBlock,sizeof(dataBlock));
+	io_system.read_block(block_number,oft[oft_index].buffer);
 }
 
 //moves open file table buffer contents to ldisk

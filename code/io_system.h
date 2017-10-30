@@ -50,6 +50,7 @@ extern iospace_struct const io_system;
 //helper functions--- might move to io_system
 int GetBlockNumber(int fd_index);
 file_descriptor GetFD(int fd_index);
+void WriteFDToLDisk(int fd_index,file_descriptor fd);
 
 void PrintDirEntries();
 

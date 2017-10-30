@@ -257,69 +257,68 @@ static int destroy(char* filename)
 {
 	//printf("destroy file: %s\n",filename);
 	
-	//find the file descriptor by searching the directory
-	char directorymap[B];
-	io_system.read_block(1,directorymap);
-
-	//int directory_filelen = *(int*)(&directorymap[0]);
-	int dir_indices[DISK_BLOCKS_COUNT];
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
-	{
-		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
-	}
+	//find the file descriptor by searching the directory (look for the directory entry filename)
 	
-	int target_fd_value = -1;
-	int target_fd_location = -1;
-	int target_dir_index = -1;
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	int t_blocknumber = -1;
+	int t_blocklocation = -1;
+	int t_fd_index = -1;
+	file_descriptor dir_fd = GetFD(0);
+	for(int k = 0;k < DISK_BLOCKS_COUNT;++k)
 	{
-		printf("block number: %d\n",dir_indices[i]);
-		if(dir_indices[i] == FREE)
-		{
-			printf("Error: %s cannot be deleted.. not in directory\n",filename);
-			return 0;
-		}
-
+		//not found in this fd_index
+		if(dir_fd.block_numbers[k] == FREE) break;
+	
 		char directoryData[B];
-		io_system.read_block(dir_indices[i],directoryData);
-		int dir_entry_len = DIR_ENTRY_CAPACITY * sizeof(int);//size of each directory entry in bytes
-		for(int b = 0;b < B;b += dir_entry_len)
+		io_system.read_block(dir_fd.block_numbers[k],directoryData);
+		int dir_entry_len = sizeof(int) * DIR_ENTRY_CAPACITY;//8 bytes
+		for(int m = 0;m < B;m += dir_entry_len)
 		{
-			char* entry_name = (char*)(&directoryData[b]);
-			if(strcmp(entry_name,filename) == 0)
+			char* sym_name = (char*)(&directoryData[m]);
+			if(strcmp(sym_name,filename) == 0)
 			{
-				printf("THE SAME\n");
-				target_dir_index = dir_indices[i];
-				target_fd_value = *(int*)(&directoryData[b + sizeof(int)]);
-				target_fd_location = b + sizeof(int);
-				i = DISK_BLOCKS_COUNT;
+				t_blocknumber = dir_fd.block_numbers[k];
+				t_blocklocation = m;
+				k = DISK_BLOCKS_COUNT;
 				break;
 			}
 		}
+			
+
 	}
 
-	if(target_fd_value == -1)
+	if(t_blocknumber == -1)
 	{
-		printf("Error: %s could not be found\n",filename);
+		printf("Error: could not find %s to destroy\n",filename);
 		return 0;
 	}
 
-	//remove the directory entry ~ entry_name and entry_fd
-	char directoryData[B];
-	io_system.read_block(target_dir_index,directoryData);
-	int reset = -1;
-	memcpy(&directoryData[target_fd_location],&reset,sizeof(int)); //entry_fd
-	memcpy(&directoryData[target_fd_location - sizeof(int)],&reset,sizeof(char) * 4); //entry_name
-	io_system.write_block(target_dir_index,directoryData);
 
-	//Update the bitmap to reflect the freed blocks
-	file_system.disableBit(target_dir_index);
-	
-	//Free the file descriptor
-	int freed = -1;
-	printf("target_fd_value: %d\n",target_fd_value * FD_CAPACITY);
-	memcpy(&directorymap[target_fd_value * FD_CAPACITY * sizeof(int)],&freed,sizeof(int));	
-	io_system.write_block(1,directorymap);
+	//remove directory entry
+	char temp_buf[B];
+	io_system.read_block(t_blocknumber,temp_buf);
+	t_fd_index = *(int*)(&temp_buf[t_blocklocation + sizeof(int)]);
+	int reset = -1;
+	memcpy(&temp_buf[t_blocklocation],&reset,sizeof(int));//sym_name
+	memcpy(&temp_buf[t_blocklocation + sizeof(int)],&reset,sizeof(int));//fd_index
+	io_system.write_block(t_blocknumber,temp_buf);
+
+	//update the bitmap to reflect the freed blocks
+	file_descriptor dir_contents_fd = GetFD(t_fd_index);
+	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	{
+		if(dir_contents_fd.block_numbers[i] == FREE) break;
+		file_system.disableBit(dir_contents_fd.block_numbers[i]);
+		int numBuf[INTS_PER_BLOCK];
+		io_system.read_block(dir_contents_fd.block_numbers[i],(char*)numBuf);
+		for(int k = 0;k < INTS_PER_BLOCK;++k)
+			numBuf[k] = -1;
+		io_system.write_block(dir_contents_fd.block_numbers[i],(char*)numBuf);
+		dir_contents_fd.block_numbers[i] = FREE;
+	}
+
+	//free the file descriptor
+	dir_contents_fd.file_len = -1;
+	WriteFDToLDisk(t_fd_index,dir_contents_fd);	
 
 	//return status	
 	return 1;
@@ -378,9 +377,10 @@ static int open(char* filename)
 			oft[i].file_len = data_fd.file_len;
 
 			//read the first data block into the oft buffer
-			char data[B];
-			io_system.read_block(data_fd.block_numbers[0],data);
-			memcpy(oft[i].buffer,data,sizeof(data));
+			if(data_fd.block_numbers[0] == FREE)
+				printf("Warning: open... %s is an empty file\n",filename);
+			else
+				io_system.read_block(data_fd.block_numbers[0],oft[i].buffer);
 			break;
 		}
 	}
