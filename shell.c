@@ -73,7 +73,7 @@ int main(int argc,char* argv[])
 		{
 			printf("bitmap: ");
 			print_bitmap();
-			printf("blocks: ");
+			printf("blocks: \n");
 			print_blocks();
 			printf("ofts: \n");
 			print_ofts();

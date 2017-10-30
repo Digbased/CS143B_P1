@@ -84,10 +84,15 @@ void print_blocks()
 		io_system.read_block(k,block);
 
 		printf("logical_index: %d\n", k);
+		//print as ints
 		for(int i = 0;i < B; i += sizeof(int))
 		{
 			printf("%d ",*(int*)(&block[i]) );
 		}
+		printf("\n");
+		//print as char strings
+		for(int i = 0;i < B;i += sizeof(int) * DIR_ENTRY_CAPACITY)
+			printf("%s ",(char*)&block[i]);
 		printf("\n");
 	}
 
@@ -98,6 +103,24 @@ static void create(char* filename)
 {
 	//printf("create file: %s\n",filename);
 
+	//search in ldisk if filename is already listed in one of the directory data blocks
+	file_descriptor directory_fd = GetFD(0);
+	for(int k = 0;k < DISK_BLOCKS_COUNT;++k)
+	{
+		if(directory_fd.block_numbers[k] == FREE) continue;
+		char dirBlock[B];
+		io_system.read_block(directory_fd.block_numbers[k],dirBlock);
+		for(int m = 0;m < B;m += sizeof(int) * DIR_ENTRY_CAPACITY)
+		{
+			char* sym_name = (char*)(&dirBlock[m]);
+			if(strcmp(sym_name,filename) == 0)
+			{
+				printf("Error: %s already exists on ldisk\n",filename);
+				return;
+			}
+		}
+	}
+
 	int fd_index = -1;
 	int target_fd_location = -1;//where the fd meta data is located in the logical blockk
 	int target_logical_index = -1;//which logical block on ldisk the fd was found
@@ -107,147 +130,105 @@ static void create(char* filename)
 		char block[B];
 		io_system.read_block(logical_index,block);
 		
-		for(int k = 0;k < B; k += FDS_PER_BLOCK)
+		for(int k = 0;k < B; k += FDS_PER_BLOCK * FD_CAPACITY)
 		{
-			int fdValue = *(int*)(block + sizeof(int) * k);
+			int fdValue = *(int*)(block + k);
 			if(fdValue == FREE)
 			{
 				//mark as taken
-				//this might be wrong
-				fd_index = (k / FDS_PER_BLOCK);// + (INTS_PER_BLOCK * (logical_index - 1));
+				fd_index = (k + (BYTES_PER_BLOCK * (logical_index - 1)) ) / INTS_PER_BLOCK;
+				printf("create fd_index: %d\n",fd_index);
 				target_logical_index = logical_index;
-				target_fd_location  = (sizeof(int) * k);
+				target_fd_location  = k;
+				
+				//init its fd file_len to 0 ~ defer saving fd information until directory entry slot
+				//is found
+				//int empty_filelen = 0;
+				//memcpy(block + k,&empty_filelen,sizeof(int));
+				//io_system.write_block(logical_index,block);
+				logical_index = RESERVED_BLOCKS;
 				break;
 			}
 		}
 		
-		if(fd_index != -1) //file descriptor is found
-			break;
-		if(fd_index == -1 && logical_index == 6)
-		{
-			printf("Error: not enough space to store %s on ldisk\n",filename);
-			return;
-		}
 	}
 
-	
-	char directorymap[B];
-	io_system.read_block(1,directorymap);
-
-	int directory_filelen = *(int*)(&directorymap[0]);
-	int dir_indices[DISK_BLOCKS_COUNT];
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	if(fd_index == -1)
 	{
-		dir_indices[i] = *(int*)(&directorymap[ (i + 1) * sizeof(int)]);
+		printf("Error not enough space to store %s on ldisk\n",filename);
+		return;
 	}
 
-	// check if directory entry already exists in file... if it does return error	
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+	//search for a free directory entry slot to store filename and file_length in the directory data blocks
+	int target_block_index = -1;
+	int target_entry_location = -1;
+	for(int k = 0;k < DISK_BLOCKS_COUNT;++k)
 	{
-		if(dir_indices[i] == FREE) //then we know that directory entry does not exist since a datablock has not been assigned for the directory fd
-			break;
-		else
+		//grow the directory as needed when creating new files..
+		if(directory_fd.block_numbers[k] == FREE)
 		{
-			char directoryData[B];
-			io_system.read_block(dir_indices[i],directoryData);
-	
-			int dir_entry_len = sizeof(int) * DIR_ENTRY_CAPACITY;
-			for(int k = 0;k < DIR_ENTRIES_PER_BLOCK; ++k)
+			int expected_block = -1;
+			for(int i = RESERVED_BLOCKS;i < B;++i)
 			{
-				char* entry_name = (char*)(&directoryData[k * dir_entry_len]);
-				if(strcmp(entry_name,filename) == 0)
+				if(file_system.isBitEnabled(i) == 0)
 				{
-					printf("error: %s already exists in the directory ldisk\n",filename);
-					return;//-1
-				}
-			}
-		}
-	}
-
-
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
-	{
-		//if dir_index isn't allocated to a data block,find a data block to assign it to in ldisk
-		//find free data block directory can use to store its directory entries on ldisk
-		if(dir_indices[i] == FREE)
-		{
-			//hardcode next min free block to be index 7
-			for(int logical_index = RESERVED_BLOCKS; logical_index < B; ++logical_index)
-			{
-				if(file_system.isBitEnabled(logical_index) == 0)
-				{
-					dir_indices[i] = logical_index;//assign block_number to an open datablock on ldisk for the directory fd
-					memcpy( &directorymap[ (i + 1) * sizeof(int) ], &logical_index,sizeof(int));
-					//get the fd from the block number?
-					
-					file_system.enableBit(logical_index);
+					expected_block = i;
+					file_system.enableBit(i);
+					directory_fd.block_numbers[k] = i;
+					WriteFDToLDisk(0,directory_fd);//write back to directory fd
 					break;
 				}
 			}
 
-			//if it couldn't find a free block to allocate to.. disk must be full
-			if(dir_indices[i] == FREE)
+			if(expected_block == -1)//if no available blocks can be found
 			{
-				printf("Error: disk is full!\n");
-				return;//-1
+				printf("Error: create cannot find available blocks on ldisk\n");
+				return;
 			}
+
 		}
-	
-		//find a location on ldisk to store directory entry
-		int block_number = dir_indices[i];
-		oft[0].fd_index = 0;//directory fd_index
-		char directoryData[B];
-		io_system.read_block(block_number,directoryData);
-		int dir_entry_len = sizeof(int) * 2;//how many integers each dir entry can hold in bytes
-		for(int k = 0;k < DIR_ENTRIES_PER_BLOCK; ++k)
+		
+		char tmpBuf[B];
+		io_system.read_block(directory_fd.block_numbers[k],tmpBuf);
+		for(int m = 0;m < B;m += sizeof(int) * DIR_ENTRY_CAPACITY)
 		{
-			//if file name is not assigned (-1), then this entry slot is free
-			int entry_status = *(int*)(&directoryData[k * dir_entry_len]);
-			if(entry_status == FREE)
+			//check if available directory entry slot
+			int status = *(int*)(&tmpBuf[m]);
+			if(status == FREE)
 			{
-				//1st entry is filename, 2nd entry is fd index
-				memcpy(&(directoryData[k * dir_entry_len]),filename,sizeof(char) * 4);
-				memcpy(&(directoryData[k * dir_entry_len + sizeof(int)]),&fd_index,sizeof(fd_index));
-
-				//update directory file length in bytes
-				directory_filelen += (sizeof(char) * 4) + sizeof(fd_index);
-				memcpy(&directorymap[0],&directory_filelen,sizeof(int));
-				io_system.write_block(1,directorymap);
-
-				//printf("directory file length: %d\n",directory_filelen);
-
-				//fill both entries ~ write directory data back to ldisk
-				io_system.write_block(block_number,directoryData);
-				
-				int blockIndex = oft[0].cur_pos / BYTES_PER_BLOCK;
-				printf("oft fd_index: %d\n",oft[0].fd_index);
-				file_descriptor dir_desc = GetFD(oft[0].fd_index);
-				//if oft buffer block number does not match block number
-				if(block_number != dir_desc.block_numbers[blockIndex])
-				{
-					printf("%d != %d\n",block_number,dir_desc.block_numbers[blockIndex]);
-					io_system.write_block(dir_desc.block_numbers[blockIndex],oft[0].buffer);
-				}
-				io_system.read_block(block_number,oft[0].buffer);//write to oft buffer
-
-				i = DISK_BLOCKS_COUNT;//do this to stop outer loop
+				target_entry_location = m;
+				target_block_index = k;
+				k = DISK_BLOCKS_COUNT;
 				break;
 			}
 		}
-		
 
 	}
 
-	//write back to directory fd to update ldisk
-	io_system.write_block(1,directorymap);
+	if(target_block_index == -1)
+	{
+		printf("Error: unable to find free directory entry slot\n");
+		return;
+	}
+	
+	//fill free file descriptor info and directory entry info
+	char fdBlock[B];
+	io_system.read_block(target_logical_index,fdBlock);
+	int empty_filelen = 0;
+	memcpy(fdBlock + target_fd_location,&empty_filelen,sizeof(int));
+	io_system.write_block(target_logical_index,fdBlock);
 
+	//fill directory entry info
+	char dirEntryBlock[B];
+	io_system.read_block(directory_fd.block_numbers[target_block_index],dirEntryBlock);
+	//dir entry sym_name
+	memcpy(dirEntryBlock + target_entry_location,filename,sizeof(char) * 4);
+	//dir_entry fd_index
+	memcpy(dirEntryBlock + target_entry_location + sizeof(int),&fd_index,sizeof(int));
+	io_system.write_block(directory_fd.block_numbers[target_block_index],dirEntryBlock);
 
-	//write new fd discovered in ldisk
-	char target_block[B];	
-	io_system.read_block(target_logical_index,target_block);
-	int empty = 0;
-	memcpy(target_block + target_fd_location,&empty,sizeof(int));
-	io_system.write_block(target_logical_index,target_block);	
+	//debugging ~ print fd index
+	printf("create: fd_index = %d\n",fd_index);
 	
 }
 
