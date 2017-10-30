@@ -26,14 +26,23 @@ int main(int argc,char* argv[])
 //	printf("reserved blocks: %d\n\n",RESERVED_BLOCKS);
 //
 //	printf("OFT_SIZE: %d\n",OFT_SIZE);
-	
-	file_system.init(argv[1]);
-	print_bitmap();
-	print_blocks();
-	
-	file_system.create("abc");
-	print_bitmap();
-	print_blocks();
+
+
+	char f[B];
+	memset(f,'a',B);
+	io_system.write_block(62,f);
+
+	char f2[B];
+	io_system.read_block(62,f);
+	printf("%c\n",f2[5]);
+
+//	file_system.init(argv[1]);
+//	print_bitmap();
+//	print_blocks();
+//	
+//	file_system.create("abc");
+//	print_bitmap();
+//	print_blocks();
 	
 //	file_descriptor dir_fd1 = GetFD(0);	
 //	printf("file_len: %d\n",dir_fd1.file_len);
@@ -43,13 +52,13 @@ int main(int argc,char* argv[])
 //	printf("\n");
 
 	//print dir entries
-	file_system.directory();
+//	file_system.directory();
 
 //	file_system.destroy("abc");
 //	print_bitmap();
 //	print_blocks();
 //		
-	file_system.save(argv[1]);
+//	file_system.save(argv[1]);
 
 	return 0;
 }

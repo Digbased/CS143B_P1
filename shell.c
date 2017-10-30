@@ -77,6 +77,8 @@ int main(int argc,char* argv[])
 			print_blocks();
 			printf("ofts: \n");
 			print_ofts();
+			printf("fds: \n");
+			print_fds();
 		}
 		//can a file have more than 4 characters?
 		else if(strcmp(cmd,"cr") == 0)
@@ -96,7 +98,8 @@ int main(int argc,char* argv[])
 			if(format_status != 2)
 				printf("Error de: unexpected input\n");
 			else
-				printf("de\n");//de(name);
+				//printf("de\n");
+				de(name);
 		}
 		else if(strcmp(cmd,"op") == 0)
 		{
@@ -105,7 +108,8 @@ int main(int argc,char* argv[])
 			if(format_status != 2)
 				printf("Error op: unexpected input\n");
 			else
-				printf("op\n");//op(name);
+				//printf("op\n");
+				op(name);
 		}
 		else if(strcmp(cmd,"cl") == 0)
 		{
@@ -114,7 +118,8 @@ int main(int argc,char* argv[])
 			if(format_status != 2)
 				printf("Error cl: unexpected input\n");
 			else
-				printf("cl\n");//cl(oft_index);
+				//printf("cl\n");
+				cl(oft_index);
 		}
 		else if(strcmp(cmd,"rd") == 0)
 		{
@@ -123,7 +128,8 @@ int main(int argc,char* argv[])
 			if(format_status != 3)
 				printf("Error rd: unexpected input\n");
 			else
-				printf("rd\n");//rd(oft_index,count);
+				//printf("rd\n");
+				rd(oft_index,count);
 		}
 		else if(strcmp(cmd,"wr") == 0)
 		{
@@ -133,7 +139,8 @@ int main(int argc,char* argv[])
 			if(format_status != 4)
 				printf("Error wr: unexpected input\n");
 			else
-				printf("wr\n");//wr(oft_index,b,count);
+				//printf("wr\n");
+				wr(oft_index,b,count);
 		}
 		else if(strcmp(cmd,"sk") == 0)
 		{
@@ -142,7 +149,8 @@ int main(int argc,char* argv[])
 			if(format_status != 3)
 				printf("Error sk: unexpected input\n");
 			else
-				printf("sk\n");//sk(oft_index,pos);
+				//printf("sk\n");
+				sk(oft_index,pos);
 		}
 		else if(strcmp(cmd,"dr") == 0)
 		{

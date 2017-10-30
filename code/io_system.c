@@ -13,14 +13,12 @@ extern open_file_table oft[OFT_SIZE];
 //size is the size of dest in bytes
 static void read_block(int logical_index,char* dest)
 {	
-	assert(logical_index >= 0 && logical_index < L);
-	//assert(logical_index < size);
+	int max = L;
+	assert(logical_index >= 0 && logical_index < max);
 
 	//should be able to read both char and int values from ldisk to dest
-	int i;	
-	for(i = 0;i < B;++i) 
+	for(int i = 0;i < B;++i) 
 		dest[i] = ldisk[logical_index][i];
-	//dest[i] = '\0';
 }
 
 //write block copies the number of character corresponding to the block length, B, from main memory
@@ -29,12 +27,9 @@ static void read_block(int logical_index,char* dest)
 static int write_block(int logical_index,char* src)
 {
 	assert(logical_index >= 0 && logical_index < L);
-	//assert(logical_index < size);
 
-	int i;
-	for(i = 0;i < B;++i)
+	for(int i = 0;i < B;++i)
 		ldisk[logical_index][i] = src[i];
-	//ldisk[logical_index][i] = '\0';
 
 	return logical_index;	
 }
@@ -63,8 +58,9 @@ file_descriptor GetFD(int fd_index)
 	io_system.read_block(block_number,(char*)buffer);
 	
 	file_descriptor fd;
-	fd.file_len = buffer[fd_index * FD_CAPACITY];
-	for(int f = (fd_index * FD_CAPACITY) + 1,i = 0;i < DISK_BLOCKS_COUNT;++f,++i)
+	int offset = (fd_index % sizeof(int)) * FD_CAPACITY;
+	fd.file_len = buffer[offset];
+	for(int f = offset + 1,i = 0;i < DISK_BLOCKS_COUNT;++f,++i)
 	{
 		//logical indices of where the data is actually stored on ldisk
 		fd.block_numbers[i] = buffer[f];
