@@ -35,12 +35,12 @@ int main(int argc,char* argv[])
 	print_bitmap();
 	print_blocks();
 	
-	file_descriptor dir_fd1 = GetFD(0);	
-	printf("file_len: %d\n",dir_fd1.file_len);
-	printf("block numbers:");
-	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
-		printf("%d ",dir_fd1.block_numbers[i]);	
-	printf("\n");
+//	file_descriptor dir_fd1 = GetFD(0);	
+//	printf("file_len: %d\n",dir_fd1.file_len);
+//	printf("block numbers:");
+//	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+//		printf("%d ",dir_fd1.block_numbers[i]);	
+//	printf("\n");
 
 	//print dir entries
 	file_system.directory();

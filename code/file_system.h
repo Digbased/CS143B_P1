@@ -6,7 +6,7 @@ void init_bitmap();
 void print_bitmap();
 void print_blocks();
 void init_dir();
-
+void print_ofts();
 
 //https://stackoverflow.com/questions/389827/namespaces-in-c
 typedef struct

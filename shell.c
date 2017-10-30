@@ -24,18 +24,42 @@ void dr();
 //initialize disk
 void in(char* disk_filename);
 //save disk to actual file
-void sv(char* disk_filename);
+int sv(char* disk_filename);
 
 int main(int argc,char* argv[])
 {
 	char input[LINE_BUF];
 	char cmd[CMD_LEN];
 
-	printf("> ");
-	char* status = fgets(input,LINE_BUF,stdin);
+	FILE* the_input = NULL;
+	//if input file is specified.. load it in
+	if(argc == 1)
+	{
+		the_input = stdin;
+	}
+	else if(argc == 2)
+	{
+		char* input_cmds = argv[1];
+		the_input = fopen(input_cmds,"r");
+		if(the_input == NULL)
+		{
+			printf("Error: %s not found\n",input_cmds);
+			return -1;
+		}
+	}
+	else
+	{
+		printf("Error: Too many arguments passed (%d)\n",argc);
+		return -2;
+	}
+
+	//pre initialize disk when application first starts
+	file_system.init(NULL);
+	
+	if(the_input == stdin) printf("> ");
+	char* status = fgets(input,LINE_BUF,the_input);
 	while(status != NULL)//when eof is reached
 	{
-		//do shell stuff in here!
 
 		//replace newline character with null term
 		char* ptr;
@@ -44,15 +68,26 @@ int main(int argc,char* argv[])
 
 		int format_status = sscanf(input,"%2s",cmd);
 
+		//debug prints
+		if(strcmp("pr",cmd) == 0)
+		{
+			printf("bitmap: ");
+			print_bitmap();
+			printf("blocks: ");
+			print_blocks();
+			printf("ofts: \n");
+			print_ofts();
+		}
 		//can a file have more than 4 characters?
-		if(strcmp(cmd,"cr") == 0)
+		else if(strcmp(cmd,"cr") == 0)
 		{
 			char name[sizeof(int)];
 			format_status = sscanf(input+2,"%4s",name);
 			if(format_status != 1)
 				printf("Error cr: unexpected input\n");
 			else
-				printf("cr\n");//cr(name);
+				//printf("cr\n");
+				cr(name);
 		}
 		else if(strcmp(cmd,"de") == 0)
 		{
@@ -124,17 +159,14 @@ int main(int argc,char* argv[])
 			{
 				format_status = sscanf(input,"%2s",cmd);
 				if(format_status == 1)
-				{
-					printf("disk initialized!!\n");
-					//in(NULL);
-				}
+					in(NULL);
 				else
 					printf("Error in: unexpected input\n");
 			}
 			else
 			{
-				printf("disk restored\n");
-				//in(disk_filename);
+				//printf("disk restored\n");
+				in(disk_filename);
 			}
 		}
 		else if(strcmp(cmd,"sv") == 0)
@@ -147,22 +179,35 @@ int main(int argc,char* argv[])
 			}
 			else
 			{
-				printf("disk saved\n");
-				//sv(disk_filename);
+				int save_status = sv(disk_filename);
+				if(save_status == -1)
+					printf("Error: %s could not be saved\n",disk_filename);
+				else
+					printf("disk saved\n");
 			}
 		}
 		else
 		{
-			if(strlen(input) != 0)
-				printf("Error: cmd not found: %s\n",cmd);
+			//check for newline character,carriage return, and linefeed
+			int valid_characters = (strcmp(input,"\n") == 0) || (strcmp(input,"\r") == 0) || (strcmp(input,"\r\n") == 0);
+		//	int strlen_input = strlen(input);
+		//	printf("strlen_input: %d\n",strlen_input);
+			if(strlen(input) != 0 && valid_characters != 1)
+				printf("Error: cmd not found: %s\n",input);
 		}
 
 		//reset cmd string
 		cmd[0] = '\0';
-		printf("> ");
-		status = fgets(input,LINE_BUF,stdin);
 	
+		if(the_input == stdin) printf("> ");
+		status = fgets(input,LINE_BUF,the_input);
+
 	}
+
+	if(the_input != stdin)
+		fclose(the_input);
+
+	return 0;
 }
 
 //TODO: handle error messages here
@@ -216,11 +261,21 @@ void dr()
 //initialize disk
 void in(char* disk_filename)
 {
-	file_system.init(disk_filename);
+	int status = file_system.init(disk_filename);
+	switch(status)
+	{
+		case 0:
+			printf("disk initialized\n");
+			break;
+		case 1:
+			printf("disk restored from file: %s\n",disk_filename);
+			break;
+	}
+
 }
 //save disk to actual file and close disk afterwards
-void sv(char* disk_filename)
+int sv(char* disk_filename)
 {
-	file_system.save(disk_filename);
+	return file_system.save(disk_filename);
 }
 

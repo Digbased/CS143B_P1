@@ -22,6 +22,22 @@ FILE* directory_file;
 FILE* files[FILES_COUNT];
 
 
+void print_ofts()
+{
+	for(int i = 0;i < OFT_SIZE;++i)
+	{
+		printf("oft[%d] fd_index: %d\n",i,oft[i].fd_index);
+		printf("oft file_len: %d\n",oft[i].file_len);
+		printf("oft cur_pos: %d\n",oft[i].cur_pos);
+		int* tmp_buf = (int*)(oft[i].buffer);
+		for(int k = 0;k < 16;++k)
+		{
+			printf("%d ",tmp_buf[k]);
+		}
+		printf("\n");
+	}
+}
+
 //helper function to initialize bit masks
 //initialize 8 bit masks diagonally
 void init_mask()
@@ -80,12 +96,55 @@ void print_blocks()
 //create a new file with the specified name sym_name
 static void create(char* filename)
 {
-	printf("create file: %s\n",filename);
+	//printf("create file: %s\n",filename);
+
+	//find a free file descriptor in ldisk
+//	int free_file_desc = = 1;
+//	for(int f = 1;f < MAX_DIR_ENTRIES;++f)
+//	{
+//		file_descriptor file_desc = GetFD(f);
+//		if(file_desc.file_len == -1)//FREE
+//		{
+//			free_file_desc = f;
+//			break;
+//		}
+//	}
+//
+//	//find free entry in the directory
+//	file_descriptor file_desc = GetFD(free_file_desc);
+//	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
+//	{
+//		//find a data block for directory file if not yet assigned
+//		for(int k = RESERVED_BLOCKS;k < B;++k)
+//		{
+//			if(file_system.isBitEnabled(k) != 1)
+//			{
+//				file_system.enableBit(k);
+//				file_desc.block_numbers[i] = k;
+//			}
+//		}
+//
+//		//assuming that directory datablocks have been allocated for directory file already
+//		char dataEntries[B];
+//		io_system.read_block(file_desc.block_numbers[i],dataEntries);
+//		for(int k = 0;k < B;k += sizeof(int) * DIR_ENTRY_CAPACITY)
+//		{
+//			int dir_status = *(int*)(&dataEntries[k]);
+//			if(dir_status == -1)//if no name is found here..assign new entry here
+//			{
+//				//sym_name
+//				memcpy(&dataEntries[k],filename,sizeof(char) * 4);
+//				//fd index
+//				memcpy(&dataEntries[k + sizeof(int)],free_file_desc,sizeof(int));
+//				break;
+//			}
+//		}
+//	}
 
 	int fd_index = -1;
 	int target_fd_location = -1;//where the fd meta data is located in the logical blockk
 	int target_logical_index = -1;//which logical block on ldisk the fd was found
-	for(int logical_index = 1;logical_index < 7; ++logical_index)
+	for(int logical_index = 1;logical_index < RESERVED_BLOCKS; ++logical_index)
 	{
 	//find a free file descriptor in ldisk
 		char block[B];
@@ -97,9 +156,8 @@ static void create(char* filename)
 			if(fdValue == FREE)
 			{
 				//mark as taken
-				//int taken = 0;
-				//memcpy(&(block[sizeof(int) * k]),&taken,sizeof(int));
-				fd_index = (k / FDS_PER_BLOCK) + (INTS_PER_BLOCK * (logical_index - 1));
+				//this might be wrong
+				fd_index = (k / FDS_PER_BLOCK);// + (INTS_PER_BLOCK * (logical_index - 1));
 				target_logical_index = logical_index;
 				target_fd_location  = (sizeof(int) * k);
 				break;
@@ -116,7 +174,6 @@ static void create(char* filename)
 	}
 
 	
-
 	char directorymap[B];
 	io_system.read_block(1,directorymap);
 
@@ -214,6 +271,7 @@ static void create(char* filename)
 
 				//fill both entries ~ write directory data back to ldisk
 				io_system.write_block(block_number,directoryData);
+				io_system.read_block(block_number,oft[0].buffer);//write to oft buffer
 
 				i = DISK_BLOCKS_COUNT;//do this to stop outer loop
 				break;
@@ -624,6 +682,15 @@ void init_dir()
 	//fd0, block 1 is reserved as directory file descriptor with file len initialized to 0 assuming its a new disk
 	dirmap[0] = 0;
 	io_system.write_block(1,(char*)dirmap);
+
+	open_file_table* dir_table = &oft[0];
+	dir_table->fd_index = 0;
+	dir_table->cur_pos = 0;
+	file_descriptor dir_fd = GetFD(dir_table->fd_index);
+	//dir_table->file_len = dir_fd.file_len;
+	
+	if(dir_fd.block_numbers[0] != FREE)
+		io_system.write_block(dir_fd.block_numbers[0],dir_table->buffer);
 }
 
 void init_disk()
@@ -632,8 +699,8 @@ void init_disk()
 	for(int logical_index = 0;logical_index < B; ++logical_index)
 	{
 		int free = -1;
-		int block[B / sizeof(int)];//should be 16
-		for(int i = 0;i < B / sizeof(int); ++i)
+		int block[INTS_PER_BLOCK];//should be 16
+		for(int i = 0;i < INTS_PER_BLOCK; ++i)
 		{
 			memcpy(&block[i],&free,sizeof(int));
 		}
@@ -677,7 +744,7 @@ static int init(char* filename)
 	if(filename == NULL || ldisk_file == NULL)
 	{
 		status = 0;
-		puts("disk initialized");
+	//	puts("disk initialized");
 		init_disk();
 		init_bitmap();
 		init_dir();
@@ -686,25 +753,43 @@ static int init(char* filename)
 	else // if filename exists and successfully loads
 	{
 		status = 1;
-		printf("disk restored from file: %s\n",filename);
+	//	printf("disk restored from file: %s\n",filename);
 		//load contents of file (ldisk.txt) into ldisk
 		for(int l = 0;l < L;++l)
 		{
 			char data[B];
-			fread((char*)data,sizeof(char),B,ldisk_file);
+			fread(data,sizeof(char),B,ldisk_file);
 			io_system.write_block(l,data);
+		
+			if(l == 0)
+			{
+				//print bitmap here
+				printf("init from file\n");
+				print_bitmap();
+			}
 		}
 
 		//restore directory file contents:
 		directory_file = fopen("directory.txt","w+");
+		open_file_table* dir_table = &oft[0];
+		
 		if(directory_file == NULL)
 		{
 			printf("Error: cannot open file directory.txt\n");
 			return -1;
 		}
 
-		int dirmap[B / sizeof(int)];
+		int dirmap[INTS_PER_BLOCK];
 		io_system.read_block(1,(char*)dirmap);
+		file_descriptor dir_fd = GetFD(0);
+		dir_table->file_len = dir_fd.file_len;
+		dir_table->cur_pos = 0;
+		dir_table->fd_index = 0;
+
+		//read the first set of entries from ldisk to oft buffer if its valid
+		//if(dir_fd.block_numbers[0] != FREE)
+			io_system.read_block(dir_fd.block_numbers[0],dir_table->buffer);
+		
 		//locate on disk where each datablock is in the directory fd to restore directory file contents
 		for(int i = 1;i < FD_CAPACITY;++i)
 		{
@@ -714,8 +799,8 @@ static int init(char* filename)
 			char directoryData[B];
 			io_system.read_block(dirmap[i],directoryData);
 			
-			int entryBytes = sizeof(int) * 2;//2 integers = 8 bytes
-			int numEntriesPerBlock = B / sizeof(int) / 2;
+			int entryBytes = sizeof(int) * DIR_ENTRY_CAPACITY;//2 integers = 8 bytes
+			int numEntriesPerBlock = DIR_ENTRIES_PER_BLOCK;//B / sizeof(int) / 2;
 			for(int k = 0;k < numEntriesPerBlock; ++k)
 			{
 				char* entry_name = (char*)(&directoryData[k * sizeof(char) * entryBytes]);
@@ -725,11 +810,12 @@ static int init(char* filename)
 				if(entry_fd == FREE) break;
 
 				fprintf(directory_file,"%s %d\n",entry_name,entry_fd);
+				//add to dirmap
 			}	
 		}
 	
 
-		//TODO: Also restore each file loaded from ldisk
+		//TODO: Also restore each file loaded from ldisk only if its explicitly opened using the open function
 
 		fclose(ldisk_file);
 
@@ -741,6 +827,15 @@ static int init(char* filename)
 //closes ldisk and saves all files opened (including directory file) to some file.txt 
 static int save(char* filename)
 {
+
+	//save all contents stored in ldisk to a file
+	FILE* ldisk_file = fopen(filename,"w");
+	if(ldisk_file == NULL)
+	{
+	//	printf("Error: %s could not be saved\n",filename);
+		return -1;
+	}
+	
 	if(directory_file != NULL)
 		fclose(directory_file);
 	for(int i = 0;i < FILES_COUNT; ++i)
@@ -749,19 +844,63 @@ static int save(char* filename)
 			fclose(files[i]);
 	}
 
-	//save all contents stored in ldisk to a file
-	FILE* ldisk_file = fopen(filename,"w");
-	if(ldisk_file == NULL)
+	//write back all information that might have been modified in oft
+	for(int i = 0;i < OFT_SIZE;++i)
 	{
-		printf("Error: %s could not be saved\n",filename);
-		return -1;
+		if(oft[i].fd_index == FREE) continue;
+		int target_blocknumber = GetBlockNumber(oft[i].fd_index);
+		printf("hello: %d\n",target_blocknumber);
+		printf("oft buffer: ");
+		int* temp_buf = (int*)(oft[i].buffer);
+		for(int k = 0;k < INTS_PER_BLOCK;++k)
+		{
+			printf("%d ",temp_buf[k]);
+		}
+		printf("\n");
+
+		int temp_buf2[INTS_PER_BLOCK];
+		io_system.read_block(target_blocknumber,(char*)temp_buf2);
+		printf("ldisk contents: ");
+		for(int k = 0;k < INTS_PER_BLOCK;++k)
+		{
+			printf("%d ",temp_buf2[k]);
+		}
+		printf("\n");
 	}
 
+
+	//close oft
+	for(int i = 0;i < OFT_SIZE;++i)
+	{
+		oft[i].fd_index = -1;
+		oft[i].cur_pos = -1;
+	}
+
+	//save all blocks on ldisk to txt f
+	//printf("saving:\n");
 	for(int l = 0;l < L;++l)
 	{
 		char data[B];
 		io_system.read_block(l,data);
-		fwrite(data,sizeof(char),sizeof(data),ldisk_file);	
+
+		if(l == 0)
+		{
+			printf("saving:\n");
+			print_bitmap();
+		}
+
+		if(l == 7)
+		{
+			int numdata[INTS_PER_BLOCK];
+			io_system.read_block(l,(char*)numdata);
+			for(int k = 0;k < INTS_PER_BLOCK;++k)
+			{
+				printf("%d ",numdata[k]);
+			}
+			printf("\n");
+		}
+
+		fwrite(data,sizeof(char),B,ldisk_file);	
 	}
 
 	fclose(ldisk_file);
