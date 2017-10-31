@@ -26,6 +26,7 @@ void in(char* disk_filename);
 //save disk to actual file
 int sv(char* disk_filename);
 
+//use the Makefile to make this project using 'make shell'
 //e.g. ./shell input-file.txt output-file.txt
 int main(int argc,char* argv[])
 {
@@ -98,8 +99,12 @@ int main(int argc,char* argv[])
 		else if(strcmp(cmd,"cr") == 0)
 		{
 			char name[sizeof(int)];
-			format_status = sscanf(input+2,"%4s",name);
-			if(format_status != 1)
+			format_status = sscanf(input,"%s %s",cmd,name);
+			//ensure name length caps at 3 characters max + null term
+			//name[sizeof(int) - 1] = '\0';
+			if(strlen(name) >= sizeof(int))
+				printf("Error cr: name too long (%lu)\n",strlen(name));
+			else if(format_status != 2)
 				printf("Error cr: unexpected input\n");
 			else
 				//printf("cr\n");
@@ -109,7 +114,10 @@ int main(int argc,char* argv[])
 		{
 			char name[sizeof(int)];
 			format_status = sscanf(input,"%2s %s",cmd,name);
-			if(format_status != 2)
+			//name[sizeof(int) - 1] = '\0';
+			if(strlen(name) >=  sizeof(int))
+				printf("Error de: name too long (%lu)\n",strlen(name));
+			else if(format_status != 2)
 				printf("Error de: unexpected input\n");
 			else
 				//printf("de\n");
@@ -119,7 +127,10 @@ int main(int argc,char* argv[])
 		{
 			char name[sizeof(int)];
 			format_status = sscanf(input,"%2s %s",cmd,name);
-			if(format_status != 2)
+			//name[sizeof(int) - 1] = '\0';
+			if(strlen(name) >= sizeof(int))
+				printf("Error op: name too long (%lu)\n",strlen(name));
+			else if(format_status != 2)
 				printf("Error op: unexpected input\n");
 			else
 				//printf("op\n");
@@ -216,6 +227,11 @@ int main(int argc,char* argv[])
 		//	printf("strlen_input: %d\n",strlen_input);
 			if(strlen(input) != 0 && valid_characters != 1)
 				printf("Error: cmd not found: %s\n",input);
+			else
+			{
+				if(argc == 3 || argc == 2)
+					printf("\n");
+			}
 		}
 
 		//reset cmd string
@@ -264,22 +280,25 @@ void cl(int oft_index)
 void rd(int oft_index,int bytes_read)
 {
 	char mem_area[bytes_read];
-	file_system.read(oft_index,mem_area,bytes_read);
-	printf("%s\n",mem_area);
+	int bytes = file_system.read(oft_index,mem_area,bytes_read);
+	if(bytes != -1)
+		printf("%s\n",mem_area);
 }
 //write open file ~ char b is the character to write to oft buffer
 void wr(int oft_index,char b,int bytes_written)
 {
 	char mem_area[bytes_written];
 	memset(mem_area,b,bytes_written);
-	file_system.write(oft_index,mem_area,bytes_written);
-	printf("%d bytes written\n",bytes_written);
+	int bytes = file_system.write(oft_index,mem_area,bytes_written);
+	if(bytes != -1)
+		printf("%d bytes written\n",bytes);
 }
 //lseek file
 void sk(int oft_index,int pos)
 {
-	file_system.lseek(oft_index,pos);
-	printf("position is %d\n",pos);
+	int p = file_system.lseek(oft_index,pos);
+	if(p != -1)
+		printf("position is %d\n",p);
 }
 //display directory
 void dr()

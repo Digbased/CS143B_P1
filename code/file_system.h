@@ -44,7 +44,7 @@ typedef struct
 	//the number of bytes from the beginning of the file. When a file is initially opened,
 	//the current position is automatically set to zero. After each read or write
 	//operation, it points to the byte immediately following the one that was accessed last.
-	void (* const lseek)(int index, int pos);
+	int (* const lseek)(int index, int pos);
 	
 	//displays list of files and their lengths
 	void (* const directory)();

@@ -474,7 +474,17 @@ static int open(char* filename)
 //returns -1 on error
 static int close(int oft_index)
 {
-	assert(oft_index >= 0 && oft_index < OFT_SIZE);
+	if(oft_index == 0)
+	{
+		printf("Error: close cannot explicitly close directory oft\n");
+		return -1;
+	}
+
+	if(oft_index < 0 || oft_index >= OFT_SIZE)
+	{
+		printf("Error: close invalid oft_index: %d\n",oft_index);
+		return -1;
+	}
 	
 	//error.. can't close a oft index that's already closed
 	if(oft[oft_index].fd_index == FREE)
@@ -488,14 +498,22 @@ static int close(int oft_index)
 
 	//get the current block number oft buffer is supposed to write back to
 	int blockIndex = oft[oft_index].cur_pos / BYTES_PER_BLOCK;
-	int blockNumber = data_fd.block_numbers[blockIndex];
-
-	io_system.write_block(blockNumber,oft[oft_index].buffer);
-
+	if(blockIndex  < DISK_BLOCKS_COUNT)
+	{
+		int blockNumber = data_fd.block_numbers[blockIndex];
+		io_system.write_block(blockNumber,oft[oft_index].buffer);
+	}
 	//free OFT entry
 	oft[oft_index].fd_index = FREE;	
 	oft[oft_index].file_len = FREE;
 	oft[oft_index].cur_pos = FREE;
+
+	int freeBlock[INTS_PER_BLOCK];
+	for(int i = 0;i < INTS_PER_BLOCK;++i)
+	{
+		freeBlock[i] = 0;
+	}
+	memcpy(oft[oft_index].buffer,freeBlock,INTS_PER_BLOCK * sizeof(int));
 
 	//printf("close file at index: %d\n",oft_index);
 	//return status
@@ -510,11 +528,43 @@ static int close(int oft_index)
 //reading begins at the current position of the file
 static int read(int index,char* mem_area,int count)
 {
-	assert(index >= 0 && index < OFT_SIZE);
-	//printf("begin reading %d bytes from open file to mem_area\n",count);
+	if(index == 0)
+	{
+		printf("Error: cannot explicitly read from directory oft\n");
+		return -1;
+	}
+	if(index < 0 || index >= OFT_SIZE)
+	{
+		printf("Error: read invalid oft_index: %d\n",index);
+		return -1;
+	}
 	
 	//compute the position within read/write buffer that corresponds to cur_pos within file
 	open_file_table* cur_file = &oft[index];	
+
+	if(oft[index].fd_index == FREE)
+	{
+		printf("Error: read invalid oft_index %d is free\n",oft[index].fd_index);
+		return -1;
+	}
+	
+
+	//if reading attempts to exceed file_len, throw an error
+	if(cur_file->cur_pos + count >  oft[index].file_len)
+	{
+		printf("Error: read cmd cannot read past file's file_len: %d\n",oft[index].file_len);
+		return -1;
+	}
+
+	//if max eof exceeds
+	if(cur_file->cur_pos + count > DIR_BLOCKS * BYTES_PER_BLOCK)
+	{
+		int max_len = DIR_BLOCKS * BYTES_PER_BLOCK;
+		printf("Error: read cmd cannot exceed %d bytes for reading\n",max_len);
+		return -1;
+	}
+
+
 	int buf_pos = cur_file->cur_pos % BYTES_PER_BLOCK; 	
 	int bytes_read = 0;
 	while(1)
@@ -528,21 +578,23 @@ static int read(int index,char* mem_area,int count)
 			return bytes_read;
 		}
 		//if eof is reached
-		if(cur_file->cur_pos + bytes_read >= cur_file->file_len)
+		if(cur_file->cur_pos + bytes_read == cur_file->file_len)
 		{
-			printf("Warning:read eof reached: %d\n",bytes_read);
+			//printf("Warning:read eof reached: %d\n",bytes_read);
 			cur_file->cur_pos += bytes_read;
 			mem_area[bytes_read] = '\0';
 			return bytes_read;
 		}
 		//if max eof is reached
-		if(cur_file->cur_pos + bytes_read >= DIR_BLOCKS * BYTES_PER_BLOCK)//192 bytes max
+		if(cur_file->cur_pos + bytes_read == DIR_BLOCKS * BYTES_PER_BLOCK)//192 bytes max
 		{
-			printf("Warning: read max eof reached %d\n",bytes_read);
+			//printf("Warning: read max eof reached %d\n",bytes_read);
 			cur_file->cur_pos += bytes_read;
 			mem_area[bytes_read] = '\0';
 			return bytes_read;
 		}
+
+
 		//if end of buffer is reached
 		//1. write the buffer into the appropriate block on disk (if modified)
 		//2. read the next sequential block from disk into buffer;
@@ -550,19 +602,21 @@ static int read(int index,char* mem_area,int count)
 		if(buf_pos == BYTES_PER_BLOCK)
 		{
 			//describes which block index to reference for data when looking at the corresponding data's fd
-			int block_index = (cur_file->cur_pos + buf_pos) / BYTES_PER_BLOCK;
-	
+			int block_index = (cur_file->cur_pos + bytes_read) / BYTES_PER_BLOCK;
+			int prevIndex = (cur_file->cur_pos + bytes_read - 1) / BYTES_PER_BLOCK;
+
+
 			file_descriptor data_fd = GetFD(cur_file->fd_index);
 			//edge case ~ so if cur_pos is at 190.. and you are attempting to read 50 bytes.. only read the first 2 bytes..
 			if(block_index >= DISK_BLOCKS_COUNT || data_fd.block_numbers[block_index] == FREE)
 			{
-				printf("Warning: reading only the  first  %d bytes\n",bytes_read);
+			//	printf("Warning: reading only the  first  %d bytes\n",bytes_read);
 				cur_file->cur_pos += bytes_read;
 				return bytes_read;
 			}
 
 			//I should write back the oft buffer to ldisk but I don't see the point as I'm not modifying the oft buffer in any way here...
-			io_system.write_block(data_fd.block_numbers[block_index - 1],cur_file->buffer);
+			io_system.write_block(data_fd.block_numbers[prevIndex],cur_file->buffer);
 
 			//read next block
 			io_system.read_block(data_fd.block_numbers[block_index],cur_file->buffer);
@@ -581,7 +635,17 @@ static int read(int index,char* mem_area,int count)
 //writing begins at the current position of the file
 static int write(int index,char* mem_area,int count)
 {
-	assert(index >= 0 && index < OFT_SIZE);
+	if(index == 0)
+	{
+		printf("Error: write cannot explicitly write to oft directory\n");
+		return -1;
+	}
+
+	if(index < 0 || index >= OFT_SIZE)
+	{
+		printf("Error: write invalid oft_index: %d\n",index);
+		return -1;
+	}
 
 	open_file_table* cur_file = &oft[index];
 	
@@ -592,7 +656,7 @@ static int write(int index,char* mem_area,int count)
 	}
 
 	//if the projected number of bytes in the file attempt tp exceed 192 bytes ..output 0 bytes written
-	if(cur_file->cur_pos + count >= DIR_BLOCKS * BYTES_PER_BLOCK)
+	if(cur_file->cur_pos + count > DIR_BLOCKS * BYTES_PER_BLOCK)
 	{
 		printf("Error: 0 bytes written | attempted to write %d bytes at cur_pos %d\n",count,cur_file->cur_pos);
 		return -1;
@@ -604,29 +668,19 @@ static int write(int index,char* mem_area,int count)
 
 	while(1)
 	{
-		if(bytes_written == count)
-		{
-			cur_file->cur_pos += bytes_written;
-			//update file length in descriptor and oft
-			cur_file->file_len += bytes_written;
-			char data_fd_contents[B];
-			int target_blocknumber = GetBlockNumber(cur_file->fd_index);
-			io_system.read_block(target_blocknumber,data_fd_contents);
-			((int*)data_fd_contents)[cur_file->fd_index * sizeof(int)] = cur_file->file_len;
-			io_system.write_block(target_blocknumber,data_fd_contents);
-
-			return bytes_written;
-		}
 
 		if(buf_pos == BYTES_PER_BLOCK)
 		{
 			//block index can range between 0 to 3
+			
+			//edge case
+			int prevIndex = (cur_file->cur_pos + bytes_written - 1) / BYTES_PER_BLOCK;
 			int block_index = (cur_file->cur_pos + bytes_written) / BYTES_PER_BLOCK;
 		//	printf("cur_file cur_pos: %d | bytes_written: %d\n",cur_file->cur_pos,bytes_written);
 		//	printf("cur_file block_index: %d\n",block_index);
-			if(block_index == DISK_BLOCKS_COUNT)
+			if(block_index >= DISK_BLOCKS_COUNT)
 			{
-				printf("Warning: eof reached\n");
+				printf("ERROR: eof reached\n");
 				return -1;
 			}
 			
@@ -670,8 +724,10 @@ static int write(int index,char* mem_area,int count)
 			}
 			
 			//write oft buffer to previous logical block number of ldisk
-			int prevIndex = block_index - 1;
-		//	printf("prev datablock: %d | next datablock: %d\n",data_fd.block_numbers[prevIndex],data_fd.block_numbers[block_index]);
+	//		printf("prev datablock: %d | next datablock: %d\n",data_fd.block_numbers[prevIndex],data_fd.block_numbers[block_index]);
+			
+	//		printf("prevIndex: %d | block_index: %d\n",prevIndex,block_index);
+
 			io_system.write_block(data_fd.block_numbers[prevIndex],cur_file->buffer);
 			//retrieve new data block and have it read into the oft buffer
 			io_system.read_block(data_fd.block_numbers[block_index],cur_file->buffer);	
@@ -679,13 +735,31 @@ static int write(int index,char* mem_area,int count)
 			buf_pos = 0;
 						
 		}	
+		
+		if(bytes_written == count)
+		{
+			cur_file->cur_pos += bytes_written;
+			//update file length in descriptor and oft
+			cur_file->file_len += bytes_written;
+			char data_fd_contents[B];
+			int target_blocknumber = GetBlockNumber(cur_file->fd_index);
+			io_system.read_block(target_blocknumber,data_fd_contents);
+			((int*)data_fd_contents)[cur_file->fd_index * sizeof(int)] = cur_file->file_len;
+			io_system.write_block(target_blocknumber,data_fd_contents);
+
+			//write most recent block index buffer back to ldisk
+			int block_index = cur_file->cur_pos / BYTES_PER_BLOCK;
+			file_descriptor file_fd = GetFD(cur_file->fd_index);
+			if(block_index < DISK_BLOCKS_COUNT && block_index >= 0)
+				io_system.write_block(file_fd.block_numbers[block_index],cur_file->buffer);
+
+			return bytes_written;
+		}
 
 		//write mem_area into oft buffer
 		cur_file->buffer[buf_pos++] = mem_area[bytes_written++];
 	}
 	
-		
-	printf("begin writing %d bytes from mem_area to open file\n",count);
 	return -1;
 }
 
@@ -694,24 +768,35 @@ static int write(int index,char* mem_area,int count)
 //the number of bytes from the beginning of the file. When a file is initially opened,
 //the current position is automatically set to zero. After each read or write
 //operation, it points to the byte immediately following the one that was accessed last.
-static void lseek(int index, int pos)
+static int lseek(int index, int pos)
 {
+	if(index == 0)
+	{
+		printf("Error: lseek cannot explicitly seek through directory oft\n");
+		return -1;
+	}
+
 	//there are only 4 valid oft entries
 	//assert(index >= 0 && index < OFT_SIZE);
 	if(index < 0 || index >= OFT_SIZE)
 	{
 		printf("Error: lseek cannot open oft_index: %d\n",index);
-		return;
+		return -1;
 	}
 	
 	open_file_table* cur_file = &oft[index];
+	if(cur_file->fd_index == FREE)
+	{
+		printf("Error: lseek.. oft entry is unused: %d\n",cur_file->fd_index);
+		return -1;
+	}
 
 	//file can only contain 192 bytes at max
 	//assert(pos >= 0 && pos < DIR_BLOCKS * BYTES_PER_BLOCK);
 	if(pos < 0 || pos > DIR_BLOCKS * BYTES_PER_BLOCK)
 	{
 		printf("Error: lseek cannot seek to pos %d\n",pos);
-		return;
+		return -1;
 	}
 
 	//printf("lseek to pos: %d at file index: %d\n",pos,index);
@@ -721,7 +806,16 @@ static void lseek(int index, int pos)
 	// read the new data block from disk into the buffer
 	int target_blocknumber = pos / BYTES_PER_BLOCK;
 	int current_blocknumber = cur_file->cur_pos / BYTES_PER_BLOCK;
-	if(target_blocknumber != current_blocknumber)
+	
+	if(target_blocknumber == DISK_BLOCKS_COUNT)
+		target_blocknumber = DISK_BLOCKS_COUNT - 1;
+	if(current_blocknumber == DISK_BLOCKS_COUNT)
+		current_blocknumber = DISK_BLOCKS_COUNT - 1;
+
+	int in_range1 = target_blocknumber >= 0 && target_blocknumber < DISK_BLOCKS_COUNT;
+	int in_range2 = current_blocknumber >= 0 && current_blocknumber < DISK_BLOCKS_COUNT;
+	
+	if(in_range1 == 1 && in_range2 == 1 && target_blocknumber != current_blocknumber)
 	{
 		file_descriptor file_fd = GetFD(cur_file->fd_index);
 		io_system.write_block(file_fd.block_numbers[current_blocknumber],cur_file->buffer);
@@ -731,6 +825,7 @@ static void lseek(int index, int pos)
 	//Set the current position to new position
 	cur_file->cur_pos = pos;
 	//Return Status
+	return pos;
 	//printf("position is %d\n",pos);
 }
 
