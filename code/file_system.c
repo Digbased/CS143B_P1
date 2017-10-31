@@ -142,7 +142,7 @@ static void create(char* filename)
 			{
 				//mark as taken
 				fd_index = (k + (BYTES_PER_BLOCK * (logical_index - 1)) ) / INTS_PER_BLOCK;
-				printf("create fd_index: %d\n",fd_index);
+			//	printf("create fd_index: %d\n",fd_index);
 				target_logical_index = logical_index;
 				target_fd_location  = k;
 				logical_index = RESERVED_BLOCKS;
@@ -235,8 +235,10 @@ static void create(char* filename)
 	oft[0].file_len = directory_fd.file_len;
 
 	//debugging ~ print fd index
-	printf("create: fd_index = %d\n",fd_index);
-	
+	//printf("create: fd_index = %d\n",fd_index);
+
+	//valid output
+	printf("%s created\n",filename);
 }
 
 //destroy the named file (assume that a file will not be open when the destroy call is made)
@@ -310,18 +312,18 @@ static int destroy(char* filename)
 	int dir_oft_index = oft[0].cur_pos / BYTES_PER_BLOCK;
 	if(dir_fd.block_numbers[dir_oft_index] == t_blocknumber)
 	{
-		printf("Note: destroy updating dir oft to reflect changes made in file_system\n");
+		//printf("Note: destroy updating dir oft to reflect changes made in file_system\n");
 		memcpy(oft[0].buffer,temp_buf,B);
 	}
 
 	//update the bitmap to reflect the freed blocks
-	printf("Destroy: t_fd_index: %d\n",t_fd_index);
+	//printf("Destroy: t_fd_index: %d\n",t_fd_index);
 	file_descriptor dir_contents_fd = GetFD(t_fd_index);
 	for(int i = 0;i < DISK_BLOCKS_COUNT;++i)
 	{
 		if(dir_contents_fd.block_numbers[i] == FREE) continue;
 		
-		printf("Destroy: disable data block %d\n",dir_contents_fd.block_numbers[i]);
+		//printf("Destroy: disable data block %d\n",dir_contents_fd.block_numbers[i]);
 		file_system.disableBit(dir_contents_fd.block_numbers[i]);
 		int numBuf[INTS_PER_BLOCK];
 		io_system.read_block(dir_contents_fd.block_numbers[i],(char*)numBuf);
@@ -378,10 +380,7 @@ static int open(char* filename)
 	for(int i = 1;i < OFT_SIZE;++i)
 	{
 		if(oft[i].fd_index == FREE) continue;
-		//how to get the name of the file associated with oft index?
-		//see if its current buffer matches any of the datablocks the file holds its contents on disk
-		//file_descriptor file_fd = GetFD(oft[i].fd_index);
-		printf("oft[%d].fd_index = %d\n",i,oft[i].fd_index);
+		//printf("oft[%d].fd_index = %d\n",i,oft[i].fd_index);
 
 		//i should try to go through the entire directory list and match by fd_index
 		file_descriptor dir_fd = GetFD(0);
@@ -435,7 +434,7 @@ static int open(char* filename)
 			//allocate a datablock to the file be opened
 			if(data_fd.block_numbers[0] == FREE)
 			{
-				printf("Warning: open... %s is an empty file\n",filename);
+			//	printf("Warning: open... %s is an empty file\n",filename);
 				//find a free datablock to allocate with on ldisk
 				for(int k = RESERVED_BLOCKS;k < B;++k)
 				{
@@ -466,19 +465,24 @@ static int open(char* filename)
 	{
 		printf("Error: all entries in OFT are in use\n");
 	}
-	else
-	{
-		printf("open file: %s\n",filename);
-	}
 
 	return oft_index;
 }
 
 //closes the specified file
-static void close(int oft_index)
+//returns the oft_index closed on success
+//returns -1 on error
+static int close(int oft_index)
 {
 	assert(oft_index >= 0 && oft_index < OFT_SIZE);
 	
+	//error.. can't close a oft index that's already closed
+	if(oft[oft_index].fd_index == FREE)
+	{
+		printf("Error: %d already closed\n",oft_index);
+		return -1;
+	}
+
 	//write buffer to disk ~ how do I know which block_number to write buffer to?
 	file_descriptor data_fd = GetFD(oft[oft_index].fd_index);
 
@@ -493,8 +497,9 @@ static void close(int oft_index)
 	oft[oft_index].file_len = FREE;
 	oft[oft_index].cur_pos = FREE;
 
-	printf("close file at index: %d\n",oft_index);
+	//printf("close file at index: %d\n",oft_index);
 	//return status
+	return oft_index;
 }
 
 // -- operations available after opening the file --//
@@ -506,7 +511,7 @@ static void close(int oft_index)
 static int read(int index,char* mem_area,int count)
 {
 	assert(index >= 0 && index < OFT_SIZE);
-	printf("begin reading %d bytes from open file to mem_area\n",count);
+	//printf("begin reading %d bytes from open file to mem_area\n",count);
 	
 	//compute the position within read/write buffer that corresponds to cur_pos within file
 	open_file_table* cur_file = &oft[index];	
@@ -517,8 +522,9 @@ static int read(int index,char* mem_area,int count)
 		//if the desired count or eof is reached; update current position and return status
 		if(bytes_read == count)
 		{
-			printf("Normal read: %d\n",bytes_read);
+		//	printf("Normal read: %d\n",bytes_read);
 			cur_file->cur_pos += bytes_read;
+			mem_area[bytes_read] = '\0';
 			return bytes_read;
 		}
 		//if eof is reached
@@ -526,6 +532,7 @@ static int read(int index,char* mem_area,int count)
 		{
 			printf("Warning:read eof reached: %d\n",bytes_read);
 			cur_file->cur_pos += bytes_read;
+			mem_area[bytes_read] = '\0';
 			return bytes_read;
 		}
 		//if max eof is reached
@@ -533,6 +540,7 @@ static int read(int index,char* mem_area,int count)
 		{
 			printf("Warning: read max eof reached %d\n",bytes_read);
 			cur_file->cur_pos += bytes_read;
+			mem_area[bytes_read] = '\0';
 			return bytes_read;
 		}
 		//if end of buffer is reached
@@ -614,8 +622,8 @@ static int write(int index,char* mem_area,int count)
 		{
 			//block index can range between 0 to 3
 			int block_index = (cur_file->cur_pos + bytes_written) / BYTES_PER_BLOCK;
-			printf("cur_file cur_pos: %d | bytes_written: %d\n",cur_file->cur_pos,bytes_written);
-			printf("cur_file block_index: %d\n",block_index);
+		//	printf("cur_file cur_pos: %d | bytes_written: %d\n",cur_file->cur_pos,bytes_written);
+		//	printf("cur_file block_index: %d\n",block_index);
 			if(block_index == DISK_BLOCKS_COUNT)
 			{
 				printf("Warning: eof reached\n");
@@ -663,7 +671,7 @@ static int write(int index,char* mem_area,int count)
 			
 			//write oft buffer to previous logical block number of ldisk
 			int prevIndex = block_index - 1;
-			printf("prev datablock: %d | next datablock: %d\n",data_fd.block_numbers[prevIndex],data_fd.block_numbers[block_index]);
+		//	printf("prev datablock: %d | next datablock: %d\n",data_fd.block_numbers[prevIndex],data_fd.block_numbers[block_index]);
 			io_system.write_block(data_fd.block_numbers[prevIndex],cur_file->buffer);
 			//retrieve new data block and have it read into the oft buffer
 			io_system.read_block(data_fd.block_numbers[block_index],cur_file->buffer);	
@@ -689,13 +697,24 @@ static int write(int index,char* mem_area,int count)
 static void lseek(int index, int pos)
 {
 	//there are only 4 valid oft entries
-	assert(index >= 0 && index < OFT_SIZE);
+	//assert(index >= 0 && index < OFT_SIZE);
+	if(index < 0 || index >= OFT_SIZE)
+	{
+		printf("Error: lseek cannot open oft_index: %d\n",index);
+		return;
+	}
+	
 	open_file_table* cur_file = &oft[index];
 
 	//file can only contain 192 bytes at max
-	assert(pos >= 0 && pos < DIR_BLOCKS * BYTES_PER_BLOCK);
+	//assert(pos >= 0 && pos < DIR_BLOCKS * BYTES_PER_BLOCK);
+	if(pos < 0 || pos > DIR_BLOCKS * BYTES_PER_BLOCK)
+	{
+		printf("Error: lseek cannot seek to pos %d\n",pos);
+		return;
+	}
 
-	printf("lseek to pos: %d at file index: %d\n",pos,index);
+	//printf("lseek to pos: %d at file index: %d\n",pos,index);
 
 	//if new position is not within the current data block:
 	// write the buffer into the appropriate block on disk
@@ -712,9 +731,9 @@ static void lseek(int index, int pos)
 	//Set the current position to new position
 	cur_file->cur_pos = pos;
 	//Return Status
+	//printf("position is %d\n",pos);
 }
 
-//reimplement using read,write and lseek
 //displays list of files and their lengths
 static void directory()
 {
@@ -845,14 +864,7 @@ static int init(char* filename)
 		{
 			char data[B];
 			fread(data,sizeof(char),B,ldisk_file);
-			io_system.write_block(l,data);
-		
-			if(l == 0)
-			{
-				//print bitmap here
-				printf("init from file\n");
-				print_bitmap();
-			}
+			io_system.write_block(l,data);	
 		}
 
 		//restore directory file contents:
@@ -886,29 +898,15 @@ static int save(char* filename)
 	}
 	
 	//write back all information that might have been modified in oft
+	//since some files could be not explicitly closed using file_system.close()
 	for(int i = 0;i < OFT_SIZE;++i)
 	{
 		if(oft[i].fd_index == FREE) continue;
-		int target_blocknumber = GetBlockNumber(oft[i].fd_index);
-		printf("hello: %d\n",target_blocknumber);
-		printf("oft buffer: ");
-		int* temp_buf = (int*)(oft[i].buffer);
-		for(int k = 0;k < INTS_PER_BLOCK;++k)
-		{
-			printf("%d ",temp_buf[k]);
-		}
-		printf("\n");
-
-		int temp_buf2[INTS_PER_BLOCK];
-		io_system.read_block(target_blocknumber,(char*)temp_buf2);
-		printf("ldisk contents: ");
-		for(int k = 0;k < INTS_PER_BLOCK;++k)
-		{
-			printf("%d ",temp_buf2[k]);
-		}
-		printf("\n");
+		file_descriptor file_fd = GetFD(oft[i].fd_index);
+		int target_block_index = oft[i].cur_pos / BYTES_PER_BLOCK;
+		if(file_fd.block_numbers[target_block_index] != FREE)
+			io_system.write_block(file_fd.block_numbers[target_block_index],oft[i].buffer);
 	}
-
 
 	//close oft
 	for(int i = 0;i < OFT_SIZE;++i)
@@ -924,27 +922,28 @@ static int save(char* filename)
 		char data[B];
 		io_system.read_block(l,data);
 
-		if(l == 0)
-		{
-			printf("saving:\n");
-			print_bitmap();
-		}
+	//	if(l == 0)
+	//	{
+	//		printf("saving:\n");
+	//		print_bitmap();
+	//	}
 
-		if(l == 7)
-		{
-			int numdata[INTS_PER_BLOCK];
-			io_system.read_block(l,(char*)numdata);
-			for(int k = 0;k < INTS_PER_BLOCK;++k)
-			{
-				printf("%d ",numdata[k]);
-			}
-			printf("\n");
-		}
+	//	if(l == 7)
+	//	{
+	//		int numdata[INTS_PER_BLOCK];
+	//		io_system.read_block(l,(char*)numdata);
+	//		for(int k = 0;k < INTS_PER_BLOCK;++k)
+	//		{
+	//			printf("%d ",numdata[k]);
+	//		}
+	//		printf("\n");
+	//	}
 
 		fwrite(data,sizeof(char),B,ldisk_file);	
 	}
 
 	fclose(ldisk_file);
+	
 	return 0;
 }
 

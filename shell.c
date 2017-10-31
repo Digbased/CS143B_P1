@@ -26,6 +26,7 @@ void in(char* disk_filename);
 //save disk to actual file
 int sv(char* disk_filename);
 
+//e.g. ./shell input-file.txt output-file.txt
 int main(int argc,char* argv[])
 {
 	char input[LINE_BUF];
@@ -46,6 +47,19 @@ int main(int argc,char* argv[])
 			printf("Error: %s not found\n",input_cmds);
 			return -1;
 		}
+	}
+	else if(argc == 3)
+	{
+		char* input_cmds = argv[1];
+		the_input = fopen(input_cmds,"r");
+		if(the_input == NULL)
+		{
+			printf("Error: %s not found\n",input_cmds);
+			return -1;
+		}
+		
+		char* output = argv[2];
+		freopen(output,"w",stdout);
 	}
 	else
 	{
@@ -228,17 +242,23 @@ void cr(char* sym_name)
 //destroy
 void de(char* sym_name)
 {
-	file_system.destroy(sym_name);
+	int status = file_system.destroy(sym_name);
+	if(status == 1)
+		printf("%s destroyed\n",sym_name);
 }
 //open
 void op(char* sym_name)
 {
-	file_system.open(sym_name);
+	int oft_index = file_system.open(sym_name);
+	if(oft_index != -1)
+		printf("%s opened %d\n",sym_name,oft_index);
 }
 //close
 void cl(int oft_index)
 {
-	file_system.close(oft_index);
+	int closed_oft_index = file_system.close(oft_index);
+	if(closed_oft_index != -1)
+		printf("%d closed\n",closed_oft_index);
 }
 //read open file ~ print read memory here
 void rd(int oft_index,int bytes_read)
@@ -276,7 +296,8 @@ void in(char* disk_filename)
 			printf("disk initialized\n");
 			break;
 		case 1:
-			printf("disk restored from file: %s\n",disk_filename);
+			printf("disk restored\n");
+			//printf("disk restored from file: %s\n",disk_filename);
 			break;
 	}
 
@@ -284,6 +305,7 @@ void in(char* disk_filename)
 //save disk to actual file and close disk afterwards
 int sv(char* disk_filename)
 {
-	return file_system.save(disk_filename);
+	int status = file_system.save(disk_filename);
+	return status;
 }
 

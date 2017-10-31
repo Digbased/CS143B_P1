@@ -25,7 +25,9 @@ typedef struct
 	int (* const open)(char* filename);
 	
 	//closes the specified file
-	void (* const close)(int index);
+	//returns the oft_index on success
+	//returns -1 on error
+	int (* const close)(int index);
 	
 	// -- operations available after opening the file --//
 	
