@@ -793,7 +793,8 @@ static int lseek(int index, int pos)
 
 	//file can only contain 192 bytes at max
 	//assert(pos >= 0 && pos < DIR_BLOCKS * BYTES_PER_BLOCK);
-	if(pos < 0 || pos > DIR_BLOCKS * BYTES_PER_BLOCK)
+	//note: lseek shouldn't be able to seek past what wasn't written to file
+	if(pos < 0 || pos > DIR_BLOCKS * BYTES_PER_BLOCK || pos > cur_file->file_len)
 	{
 		printf("Error: lseek cannot seek to pos %d\n",pos);
 		return -1;
